@@ -160,15 +160,33 @@ app.get('/api/pdf-images/:id', (req,res)=>{
   res.json({ok:true,id:image.id,name:image.name,updatedAt:image.updatedAt,mimeType:image.mimeType||'image/jpeg',dataUrl:`data:${image.mimeType||'image/jpeg'};base64,${data}`});
 });
 
-const browserOptions = {
+const browserLaunchOptions = {
     headless: true,
-    executablePath: puppeteer.executablePath(),
     args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage'
     ]
 };
+
+// Puppeteer 25 may expose executablePath() as a Promise in some environments.
+// Resolve it before passing it to launch(), otherwise Chromium receives
+// "[object Promise]" as the executable path.
+async function launchBrowser() {
+    let executablePath;
+    try {
+        executablePath = await puppeteer.executablePath();
+    } catch (_) {
+        executablePath = null;
+    }
+
+    const options = { ...browserLaunchOptions };
+    if (executablePath && typeof executablePath === 'string' && fs.existsSync(executablePath)) {
+        options.executablePath = executablePath;
+    }
+
+    return puppeteer.launch(options);
+}
 
 async function findFirst(page, selectors, timeout = 10000) {
     for (const selector of selectors) {
@@ -235,7 +253,7 @@ app.post('/api/generate-pdf', async (req, res) => {
     let browser;
 
     try {
-        browser = await puppeteer.launch(browserOptions);
+        browser = await launchBrowser();
 
         const page = await browser.newPage();
 
@@ -341,7 +359,7 @@ app.post('/api/init-search', async (req, res) => {
 
     try {
 
-        browser = await puppeteer.launch(browserOptions);
+        browser = await launchBrowser();
 
         const page = await browser.newPage();
 
