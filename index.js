@@ -5,7 +5,7 @@ const os = require('os');
 
 // Keep Puppeteer cache identical during build and runtime. This must be set
 // BEFORE requiring Puppeteer so its configuration resolves the same cache.
-process.env.PUPPETEER_CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
 const puppeteer = require('puppeteer');
 const crypto = require('crypto');
 const cors = require('cors');
@@ -179,7 +179,7 @@ const browserLaunchOptions = {
 async function launchBrowser() {
     // Keep Puppeteer's cache fixed to the application directory so the build-time
     // Chrome installation and runtime lookup always use the same location.
-    const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+    const cacheDir = path.join(__dirname, '.cache', 'puppeteer');
     process.env.PUPPETEER_CACHE_DIR = cacheDir;
 
     let executablePath = null;
@@ -216,24 +216,38 @@ async function launchBrowser() {
 }
 
 async function findFirst(page, selectors, timeout = 10000) {
-    for (const selector of selectors) {
-        try {
-            const element = await page.waitForSelector(selector, {
-                timeout
-            });
-
-            if (element) {
-                return {
-                    element,
-                    selector
-                };
+    // Check all candidate selectors in one browser-side poll instead of waiting
+    // sequentially for every selector. This avoids several 5-10s waits when BDRIS
+    // changes an element id/name.
+    try {
+        const found = await page.waitForFunction((sels) => {
+            for (const selector of sels) {
+                try {
+                    const el = document.querySelector(selector);
+                    if (el) return selector;
+                } catch (_) {}
             }
-        } catch (err) {
-            // next selector
-        }
+            return false;
+        }, { timeout, polling: 100 }, selectors);
+        const selector = await found.jsonValue();
+        if (!selector) return null;
+        const element = await page.$(selector);
+        return element ? { element, selector } : null;
+    } catch (_) {
+        return null;
     }
+}
 
-    return null;
+let sharedBDRISBrowser = null;
+async function getSharedBDRISBrowser() {
+    if (sharedBDRISBrowser) {
+        try {
+            if (sharedBDRISBrowser.connected) return sharedBDRISBrowser;
+        } catch (_) {}
+        sharedBDRISBrowser = null;
+    }
+    sharedBDRISBrowser = await launchBrowser();
+    return sharedBDRISBrowser;
 }
 
 async function setInputValue(element, value) {
@@ -383,12 +397,13 @@ app.post('/api/init-search', async (req, res) => {
     }
 
     let browser;
+    let page;
 
     try {
 
-        browser = await launchBrowser();
+        browser = await getSharedBDRISBrowser();
 
-        const page = await browser.newPage();
+        page = await browser.newPage();
 
         await page.goto(
             'https://everify.bdris.gov.bd/',
@@ -446,7 +461,7 @@ app.post('/api/init-search', async (req, res) => {
 
         if (!brnField || !dobField) {
 
-            await browser.close();
+            await page.close().catch(() => {});
 
             const missing = [
 
@@ -496,7 +511,7 @@ app.post('/api/init-search', async (req, res) => {
 
         if (!captcha) {
 
-            await browser.close();
+            await page.close().catch(() => {});
 
             return res.status(500).json({
                 ok: false,
@@ -534,7 +549,7 @@ app.post('/api/init-search', async (req, res) => {
                 const session =
                     sessions.get(sessionId);
 
-                session.browser
+                session.page
                     .close()
                     .catch(() => {});
 
@@ -559,7 +574,7 @@ app.post('/api/init-search', async (req, res) => {
     } catch (err) {
 
         if (browser) {
-            await browser.close().catch(() => {});
+            if (page) await page.close().catch(() => {});
         }
 
         res.status(500).json({
@@ -1424,7 +1439,7 @@ app.post('/api/submit-captcha', async (req, res) => {
            CLOSE
         ===================================================== */
 
-        await browser.close();
+        await page.close().catch(() => {});
 
         sessions.delete(sessionId);
 
