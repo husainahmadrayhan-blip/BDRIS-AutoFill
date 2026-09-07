@@ -239,6 +239,18 @@ async function findFirst(page, selectors, timeout = 10000) {
 }
 
 let sharedBDRISBrowser = null;
+let sharedPDFBrowser = null;
+async function getSharedPDFBrowser() {
+    if (sharedPDFBrowser) {
+        try {
+            if (sharedPDFBrowser.connected) return sharedPDFBrowser;
+        } catch (_) {}
+        sharedPDFBrowser = null;
+    }
+    sharedPDFBrowser = await launchBrowser();
+    return sharedPDFBrowser;
+}
+
 async function getSharedBDRISBrowser() {
     if (sharedBDRISBrowser) {
         try {
@@ -292,30 +304,28 @@ app.post('/api/generate-pdf', async (req, res) => {
     }
 
     let browser;
+    let page;
 
     try {
-        browser = await launchBrowser();
+        // Reuse a warm Chromium process. Starting Chrome for every preview was
+        // the main source of the noticeable delay on Render.
+        browser = await getSharedPDFBrowser();
+        page = await browser.newPage();
 
-        const page = await browser.newPage();
-
-        // Render the A4 document at a high browser raster scale for image assets,
-        // while Chromium keeps HTML text and SVG as vector content in the PDF.
-        await page.setViewport({ width: 1588, height: 2246, deviceScaleFactor: 2 });
+        // PDF print uses CSS A4 dimensions; a large deviceScaleFactor is not
+        // required and only adds rasterization work. Keep text/SVG vector and
+        // let the source image determine image quality.
+        await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
 
         await page.setContent(html, {
             waitUntil: 'domcontentloaded'
         });
 
-        // PDF generation is fully offline. Use SolaimanLipi when it is installed on the host,
-        // otherwise the CSS fallback font is used. No external font/CDN is required.
+        // The generated HTML embeds the exact Bengali font as a data URL, so
+        // one font-readiness wait is enough; four separate font.load() calls
+        // were unnecessary work on every preview.
         await page.evaluate(async () => {
             if (document.fonts && document.fonts.ready) await document.fonts.ready;
-            if (document.fonts && document.fonts.load) {
-                await document.fonts.load('14pt "BDRIS Bengali"');
-                await document.fonts.load('500 14pt "BDRIS Bengali"');
-                await document.fonts.load('600 14pt "BDRIS Bengali"');
-                await document.fonts.load('700 18pt "BDRIS Bengali"');
-            }
         });
 
         await page.emulateMediaType('print');
@@ -356,7 +366,7 @@ app.post('/api/generate-pdf', async (req, res) => {
             }
         }
 
-        await browser.close();
+        await page.close().catch(() => {});
 
         res.set({
             'Content-Type': 'application/pdf',
@@ -368,9 +378,7 @@ app.post('/api/generate-pdf', async (req, res) => {
 
     } catch (err) {
 
-        if (browser) {
-            await browser.close().catch(() => {});
-        }
+        if (page) await page.close().catch(() => {});
 
         res.status(500).json({
             ok: false,

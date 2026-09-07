@@ -779,6 +779,7 @@ function buildInteractivePreviewHtml(baseHtml){
     </div>
   </div>`;
   const html=baseHtml.replace(/<div class="pdf-image-overlay">[\s\S]*?<\/div>/, editor);
+  const fitStyle='<style id="mobile-a4-fit">html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important;width:210mm!important;height:297mm!important;}body{transform-origin:top left!important;}</style><scr'+'ipt>(function(){function fit(){const target=793.7008;const s=Math.min(1,Math.max(.01,window.innerWidth/target));document.body.style.transform="scale("+s+")";document.documentElement.style.height=(297*s)+"mm";}fit();window.addEventListener("resize",fit);})();</scr'+'ipt>';
   const script=`<style>
 .pdf-image-editor-frame{position:absolute;left:5mm;bottom:5mm;width:200mm;height:90mm;overflow:hidden;z-index:50;pointer-events:auto;box-sizing:border-box;background:transparent}
 .pdf-image-editor-box{position:absolute;left:50%;top:50%;box-sizing:border-box;border:2px solid #2d7cff;cursor:move;transform:translate(-50%,-50%);transform-origin:center center;touch-action:none;min-width:12px;min-height:12px}
@@ -857,7 +858,7 @@ function finish(){if(!state)return;const v=readState();send(v);state=null;}
 box.addEventListener('pointerup',finish);box.addEventListener('pointercancel',finish);box.addEventListener('lostpointercapture',()=>{if(state)finish()});
 apply(INIT);
 })();<\/script>`;
-  return html.replace('</body>',script+'</body>');
+  return html.replace('</body>',fitStyle+script+'</body>');
 }
 
 
@@ -2088,6 +2089,19 @@ body:not(.login-locked) .side-menu-trigger{display:flex!important;right:18px!imp
  body:not(.login-locked) .preview-download-bar{position:sticky;bottom:6px;padding:8px;background:rgba(247,249,252,.96);border-radius:10px}
 }
 </style>
+<style id="death-mode-compact-fix">
+/* Death-registration mode: hide birth-only address rows without leaving grid space. */
+body.death-registration-mode #addrBnField,
+body.death-registration-mode #addrEnField{display:none!important;}
+body.death-registration-mode #deathCauseBnField,
+body.death-registration-mode #deathCauseEnField{margin-top:0!important;}
+@media(min-width:701px){
+  body.death-registration-mode #certificateFields{grid-template-columns:1fr 1fr!important;gap:12px!important;}
+}
+/* Keep the A4 preview inside the phone instead of showing a cropped 210mm canvas. */
+body:not(.login-locked) .pdf-preview-frame{width:100%!important;aspect-ratio:210/297!important;height:auto!important;overflow:hidden!important;background:#fff!important;border-radius:16px!important;}
+body:not(.login-locked) .pdf-preview-frame iframe{width:100%!important;height:100%!important;min-height:0!important;display:block!important;border:0!important;background:#fff!important;transform:none!important;}
+</style>
 <style id="clean-modern-final-ui">
 /* FINAL CLEAN MODERN BLUE/WHITE UI - preserves existing field IDs and JS */
 body:not(.login-locked){
@@ -2359,12 +2373,17 @@ async function refreshUserBalance(){
   try{const r=await fetch('/api/balance');const d=await r.json();if(r.ok&&d.ok&&$('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);}
   catch(_){}
 }
+let previewChargeInFlight = null;
 async function chargeForPreview(){
+  if(previewChargeInFlight) return previewChargeInFlight;
+  previewChargeInFlight = (async()=>{
   const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:4})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok||!d.ok) throw new Error(d.error||'Balance charge failed');
   if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);
   return d;
+  })();
+  try { return await previewChargeInFlight; } finally { previewChargeInFlight = null; }
 }
 async function previewPDF(options={}){
   if(!options.skipCharge){
