@@ -1,0 +1,11 @@
+BDRIS AutoFill Animated Login + User Link Control
+
+1. npm install
+2. npm start
+3. Admin panel: http://SERVER:3000/admin.html
+4. Default admin: admin / change-this-admin-password
+5. For production set ADMIN_USERNAME and ADMIN_PASSWORD environment variables before first start.
+6. Admin creates a user and receives a unique ?access=... link.
+7. The first successful login binds that link to the browser/device ID. Other browsers/devices are rejected until Admin uses Reset Device.
+8. Disable/Enable, Reset Device and Delete are available from Admin panel.
+9. PDF History is scoped per logged-in user in browser IndexedDB.

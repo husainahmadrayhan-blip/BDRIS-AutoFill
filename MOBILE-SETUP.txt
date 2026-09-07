@@ -1,0 +1,27 @@
+BDRIS AutoFill - Mobile Setup (Android)
+
+Option 1: Run on the same Android phone
+1. Install Termux from a trusted source.
+2. In Termux run:
+   pkg update
+   pkg install nodejs unzip
+3. Copy/unzip this project into Termux storage.
+4. Open the siyamfix folder and run:
+   npm install
+   node index.js
+5. Open Chrome on the phone and visit:
+   http://127.0.0.1:3000
+
+Important: Puppeteer/Chromium must be available on the Android environment. If `npm install` succeeds but Chromium cannot start, use a PC/server for PDF generation or configure a compatible Chromium executable with PUPPETEER_EXECUTABLE_PATH.
+
+Option 2: Run on a PC and use from the phone
+1. On the PC: npm install
+2. Start: node index.js
+3. Find the PC's local IP, for example 192.168.1.10
+4. On the phone connected to the same Wi-Fi, open:
+   http://192.168.1.10:3000
+
+PDF
+- The PDF generator keeps native HTML text/SVG.
+- Output has a 600 KiB minimum size when the native PDF is smaller.
+- Size padding is harmless PDF comments; it does not fake visual resolution.

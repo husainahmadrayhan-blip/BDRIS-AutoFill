@@ -1,0 +1,8 @@
+LOGIN / Failed to fetch fix
+
+1. ZIP extract করুন।
+2. RUN-SERVER.bat double-click করুন।
+3. Browser-এ http://localhost:3000 খুলুন।
+4. User access link (?access=...) দিয়ে login করুন।
+
+"Failed to fetch" সাধারণত server চালু না থাকলে বা index.html সরাসরি file:// দিয়ে খুললে হয়।

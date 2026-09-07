@@ -1,0 +1,13 @@
+/* ===== SAME CAPTCHA BOX CALCULATOR: controls BELOW the SAME input ===== */
+.inline-calc-tools{display:grid!important;grid-template-columns:1fr 1fr 1.55fr .58fr;gap:7px;margin-top:8px;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+.inline-calc-tools[hidden]{display:none!important;}
+.inline-calc-tools button{min-height:42px;padding:7px 9px;border-radius:9px;border:1px solid #b9dadd;font-weight:900;cursor:pointer;font-size:14px;line-height:1.1;}
+.inline-calc-tools .calc-op-btn{background:#fff;color:#155f64;}
+.inline-calc-tools .calc-result-btn{background:#14939a;color:#fff;border-color:#14939a;}
+.inline-calc-tools .calc-clear-btn{background:#fff;color:#a52222;border-color:#d7b5b5;}
+.inline-calc-row{display:grid!important;grid-template-columns:1fr 58px!important;align-items:stretch;}
+.inline-calc-row input{min-width:0;}
+@media(max-width:700px){
+  .inline-calc-tools{grid-template-columns:1fr 1fr 1.45fr .55fr;gap:5px;}
+  .inline-calc-tools button{min-height:40px;padding:6px 5px;font-size:12px;}
+}
