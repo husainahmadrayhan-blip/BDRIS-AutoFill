@@ -106,6 +106,9 @@ body:not(.login-locked) .cert-preview{background:#050b10!important;border-color:
 
 <style id="clean-modern-final-ui">
 /* FINAL CLEAN MODERN BLUE/WHITE UI - preserves existing field IDs and JS */
+@font-face{font-family:'NikoshLight';src:url('/fonts/NotoSerifBengali-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'SolaimanLipi';src:url('/fonts/NotoSansBengali-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'SutonnyOMJ';src:url('/fonts/NotoSerifBengali-Condensed.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
 body:not(.login-locked){
   background:#f4f7fb !important;color:#18212b !important;
   font-family:"Noto Sans Bengali","Hind Siliguri",Arial,sans-serif !important;
@@ -1130,16 +1133,22 @@ function renderAll(items){
 
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
+const assetDataUrlCache = new Map();
 async function imageDataUrl(path) {
-  const response = await fetch(path, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Asset load failed: ${path}`);
-  const blob = await response.blob();
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error || new Error("Asset read failed"));
-    reader.readAsDataURL(blob);
-  });
+  if (assetDataUrlCache.has(path)) return assetDataUrlCache.get(path);
+  const promise = (async()=>{
+    const response = await fetch(path, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`Asset load failed: ${path}`);
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error("Asset read failed"));
+      reader.readAsDataURL(blob);
+    });
+  })();
+  assetDataUrlCache.set(path,promise);
+  try{return await promise;}catch(e){assetDataUrlCache.delete(path);throw e;}
 }
 
 // Bundle the Bengali fonts into the generated PDF HTML so PDF output does not
@@ -1155,6 +1164,13 @@ async function fontDataUrl(path) {
     console.warn("Bengali font asset could not be fetched; using embedded font fallback.", error);
     return EMBEDDED_BENGALI_FONT_DATA_URL;
   }
+}
+function selectedBengaliFontPath(){
+  return ({
+    NikoshLight:'/fonts/NotoSerifBengali-Regular.ttf',
+    SolaimanLipi:'/fonts/NotoSansBengali-Regular.ttf',
+    SutonnyOMJ:'/fonts/NotoSerifBengali-Condensed.ttf'
+  }[selectedBengaliFont] || '/fonts/NotoSerifBengali-Regular.ttf');
 }
 
 async function cropImageDataUrl(sourceUrl, x, y, width, height) {
@@ -1325,9 +1341,9 @@ function changeBengaliFont() {
   const select = $('font-selector');
   selectedBengaliFont = select ? select.value : 'NikoshLight';
   const family = {
-    NikoshLight: "'NikoshLight','Nikosh','Noto Serif Bengali',serif",
-    SolaimanLipi: "'SolaimanLipi','Siyam Rupali','Noto Serif Bengali',sans-serif",
-    SutonnyOMJ: "'SutonnyOMJ','SutonnyMJ','Noto Serif Bengali',serif"
+    NikoshLight: "'NikoshLight','Noto Serif Bengali',serif",
+    SolaimanLipi: "'SolaimanLipi','Noto Sans Bengali',sans-serif",
+    SutonnyOMJ: "'SutonnyOMJ','Noto Serif Bengali',serif"
   }[selectedBengaliFont] || "'Noto Serif Bengali',serif";
   document.querySelectorAll('#in_nameBn,#in_fatherBn,#in_motherBn,#in_fatherNationalityBn,#in_motherNationalityBn,#in_pobBn,#in_addrBn').forEach(el => {el.style.fontFamily=family;el.style.fontWeight='400';});
 }
@@ -1790,7 +1806,7 @@ async function generatePDF(options = {}) {
   try {
     [backgroundImage, bengaliRegularFont] = await Promise.all([
       imageDataUrl('/birth Background_page-0001-550K.jpg'),
-      fontDataUrl('/fonts/NotoSerifBengali-Regular-subset.woff2')
+      fontDataUrl(selectedBengaliFontPath())
     ]);
 
     selectedPDFImage = await ensureSelectedPDFImageData();
@@ -1841,11 +1857,7 @@ async function generatePDF(options = {}) {
   const addrEn = registrationMode === 'death' ? '' : $("in_addrEn").value.trim();
   const deathCauseBn = $("in_deathCauseBn")?.value.trim() || '';
   const deathCauseEn = $("in_deathCauseEn")?.value.trim() || '';
-  const selectedFontCSS = {
-    NikoshLight: "'NikoshLight','Nikosh','BDRIS Bengali','Noto Serif Bengali',serif",
-    SolaimanLipi: "'SolaimanLipi','Siyam Rupali','BDRIS Bengali','Noto Serif Bengali',sans-serif",
-    SutonnyOMJ: "'SutonnyOMJ','SutonnyMJ','BDRIS Bengali','Noto Serif Bengali',serif"
-  }[selectedBengaliFont] || "'BDRIS Bengali','Noto Serif Bengali',serif";
+  const selectedFontCSS = "'BDRIS Selected Bengali','Noto Serif Bengali',serif";
   const certificateStatus = certificateType === 'corrected' ? {bn:'সংশোধিত/',en:'Corrected'} : certificateType === 'duplicate' ? {bn:'প্রতিলিপি/',en:'Duplicate'} : {bn:'',en:''};
 
   const css = `
@@ -1923,7 +1935,8 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .sig-font-11 { font-size: 11pt !important; }
 .sig-title { font-weight: normal; }
 .bottom-note { position: absolute; z-index: 1; bottom: 29mm; left: 0; width: 100%; text-align: center; font-size: 8.5pt; color: #000; font-family: Arial, sans-serif; }
-@font-face { font-family: 'BDRIS Bengali'; src: url('${bengaliRegularFont}') format('woff2'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'BDRIS Bengali'; src: url('${bengaliRegularFont}') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'BDRIS Selected Bengali'; src: url('${bengaliRegularFont}') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
 `;
 
   const htmlContent = `<!DOCTYPE html>
@@ -2327,6 +2340,19 @@ body:not(.login-locked) .close-preview{background:#fff !important;color:#334155 
   <div class="bottom-note">This certificate is generated from bdris.gov.bd, and to verify this certificate, please scan the above QR Code &amp; Bar Code.</div>
 </div></div></body></html>`;
 
+  // Fast preview mode: render the certificate HTML immediately. The real PDF
+  // is generated in the background, so Render/Chromium startup no longer
+  // blocks what the user sees. Download still waits for the real PDF if needed.
+  if(options.showPreviewEarly){
+    const previewFrame = $("certIframe");
+    if(previewFrame){
+      previewFrame.removeAttribute('src');
+      previewFrame.srcdoc = buildInteractivePreviewHtml(htmlContent);
+    }
+    $("certPreview").style.display = 'block';
+    status('Certificate Preview প্রস্তুত — PDF background-এ তৈরি হচ্ছে।','ok');
+  }
+
   try {
     const response = await fetch('/api/generate-pdf', {
       method: 'POST',
@@ -2343,14 +2369,17 @@ body:not(.login-locked) .close-preview{background:#fff !important;color:#334155 
     if (pdfBlob.type !== 'application/pdf') pdfBlob = new Blob([pdfBlob], {type:'application/pdf'});
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
     pdfUrl = URL.createObjectURL(pdfBlob);
-    // Preview the actual generated PDF so the complete A4 certificate is visible.
-    // The old srcdoc preview only showed a clipped HTML viewport on mobile.
-    const previewFrame = $("certIframe");
-    if (previewFrame) {
-      previewFrame.removeAttribute('src');
-      previewFrame.srcdoc = buildInteractivePreviewHtml(htmlContent);
+    // Keep the already-visible fast HTML preview. If this call was not in
+    // early-preview mode (for example a direct download regeneration), show it
+    // after the PDF is ready.
+    if(!options.showPreviewEarly){
+      const previewFrame = $("certIframe");
+      if (previewFrame) {
+        previewFrame.removeAttribute('src');
+        previewFrame.srcdoc = buildInteractivePreviewHtml(htmlContent);
+      }
+      $("certPreview").style.display = 'block';
     }
-    $("certPreview").style.display = 'block';
     
     if(saveHistory){
       try { await saveCurrentPDFToHistory(); } catch (historyError) { status('PDF তৈরি হয়েছে, কিন্তু History-তে সেভ করা যায়নি: ' + historyError.message, 'err'); }
@@ -2389,8 +2418,9 @@ async function previewPDF(options={}){
   if(!options.skipCharge){
     try{ await chargeForPreview(); }catch(e){ status(e.message,'err'); await refreshUserBalance(); return; }
   }
-  await generatePDF({saveHistory:false});
-  setTimeout(()=>$('certPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),80);
+  const previewPromise = generatePDF({saveHistory:false,showPreviewEarly:true});
+  setTimeout(()=>$('certPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),40);
+  await previewPromise;
 }
 
 async function downloadPDF() {

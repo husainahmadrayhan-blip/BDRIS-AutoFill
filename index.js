@@ -23,7 +23,9 @@ app.get('/fonts/:file', (req, res) => {
     'NotoSerifBengali-Regular.ttf',
     'NotoSerifBengali-Medium.ttf',
     'NotoSerifBengali-SemiBold.ttf',
-    'NotoSerifBengali-Bold.ttf'
+    'NotoSerifBengali-Bold.ttf',
+    'NotoSansBengali-Regular.ttf',
+    'NotoSerifBengali-Condensed.ttf'
   ]);
   if (!allowed.has(file)) return res.status(404).send('Not found');
   res.sendFile(path.join(__dirname, 'fonts', file));
