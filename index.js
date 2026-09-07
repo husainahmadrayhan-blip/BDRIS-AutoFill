@@ -145,9 +145,11 @@ app.get('/api/pdf-images/:id', (req,res)=>{
 
 const browserOptions = {
     headless: true,
+    executablePath: puppeteer.executablePath(),
     args: [
         '--no-sandbox',
-        '--disable-setuid-sandbox'
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
     ]
 };
 
