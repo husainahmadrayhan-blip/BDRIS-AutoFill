@@ -1,9 +1,8 @@
 const express = require('express');
-const path = require('path');
-process.env.PUPPETEER_CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || path.join(__dirname, '.cache', 'puppeteer');
 const puppeteer = require('puppeteer');
 const crypto = require('crypto');
 const cors = require('cors');
+const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
@@ -12,6 +11,20 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(__dirname));
+// Explicit font route for Render/deployment environments where nested static
+// assets may not be resolved consistently.
+app.get('/fonts/:file', (req, res) => {
+  const file = path.basename(req.params.file || '');
+  const allowed = new Set([
+    'NotoSerifBengali-Regular-subset.woff2',
+    'NotoSerifBengali-Regular.ttf',
+    'NotoSerifBengali-Medium.ttf',
+    'NotoSerifBengali-SemiBold.ttf',
+    'NotoSerifBengali-Bold.ttf'
+  ]);
+  if (!allowed.has(file)) return res.status(404).send('Not found');
+  res.sendFile(path.join(__dirname, 'fonts', file));
+});
 
 const sessions = new Map();
 
@@ -149,6 +162,7 @@ app.get('/api/pdf-images/:id', (req,res)=>{
 
 const browserOptions = {
     headless: true,
+    executablePath: puppeteer.executablePath(),
     args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
