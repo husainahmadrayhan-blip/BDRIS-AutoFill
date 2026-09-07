@@ -5,7 +5,7 @@ const os = require('os');
 
 // Keep Puppeteer cache identical during build and runtime. This must be set
 // BEFORE requiring Puppeteer so its configuration resolves the same cache.
-process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
+process.env.PUPPETEER_CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
 const puppeteer = require('puppeteer');
 const crypto = require('crypto');
 const cors = require('cors');
@@ -179,7 +179,7 @@ const browserLaunchOptions = {
 async function launchBrowser() {
     // Keep Puppeteer's cache fixed to the application directory so the build-time
     // Chrome installation and runtime lookup always use the same location.
-    const cacheDir = path.join(__dirname, '.cache', 'puppeteer');
+    const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
     process.env.PUPPETEER_CACHE_DIR = cacheDir;
 
     let executablePath = null;
