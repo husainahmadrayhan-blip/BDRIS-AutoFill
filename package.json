@@ -11,7 +11,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "postinstall": "PUPPETEER_CACHE_DIR=./.cache/puppeteer npx puppeteer browsers install chrome"
   },
   "keywords": [],
   "author": "",
