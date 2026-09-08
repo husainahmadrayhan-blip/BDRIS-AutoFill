@@ -439,7 +439,24 @@ async function launchBrowser() {
         process.platform === 'win32' ? path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)','Google','Chrome','Application','chrome.exe') : null,
         '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'
     ].filter(Boolean);
+    function findManagedChrome(dir) {
+        if (!fs.existsSync(dir)) return null;
+        const stack = [{ dir, depth: 0 }];
+        while (stack.length) {
+            const item = stack.pop();
+            if (item.depth > 8) continue;
+            let entries;
+            try { entries = fs.readdirSync(item.dir, { withFileTypes: true }); } catch (_) { continue; }
+            for (const e of entries) {
+                const p = path.join(item.dir, e.name);
+                if (e.isFile() && e.name === 'chrome') return p;
+                if (e.isDirectory() && !e.name.startsWith('.')) stack.push({ dir: p, depth: item.depth + 1 });
+            }
+        }
+        return null;
+    }
     let executablePath = candidates.find(p => typeof p === 'string' && fs.existsSync(p)) || null;
+    if (!executablePath) executablePath = findManagedChrome(cacheDir);
     if (!executablePath) {
         try {
             const resolved = await puppeteer.executablePath();

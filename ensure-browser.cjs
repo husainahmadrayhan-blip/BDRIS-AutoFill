@@ -5,8 +5,24 @@ const { execFileSync } = require('child_process');
 
 const root = __dirname;
 const cacheDir = path.join(root, '.cache', 'puppeteer');
-// Build and runtime MUST use the same Puppeteer cache.
 process.env.PUPPETEER_CACHE_DIR = cacheDir;
+
+function findChrome(dir) {
+  if (!fs.existsSync(dir)) return null;
+  const stack = [{ dir, depth: 0 }];
+  while (stack.length) {
+    const { dir: current, depth } = stack.pop();
+    if (depth > 8) continue;
+    let entries;
+    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch (_) { continue; }
+    for (const e of entries) {
+      const p = path.join(current, e.name);
+      if (e.isFile() && e.name === 'chrome') return p;
+      if (e.isDirectory() && !e.name.startsWith('.')) stack.push({ dir: p, depth: depth + 1 });
+    }
+  }
+  return null;
+}
 
 const candidates = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -38,35 +54,14 @@ function installManagedChrome() {
   }
 }
 
-async function verifyManagedChrome() {
-  try {
-    const puppeteer = require('puppeteer');
-    // Puppeteer 25.x can expose executablePath() as a Promise.
-    const executable = await puppeteer.executablePath();
-    if (typeof executable === 'string' && executable && fs.existsSync(executable)) {
-      console.log('[BDRIS] Puppeteer Chrome verified:', executable);
-      return true;
-    }
-    console.error('[BDRIS] Puppeteer Chrome not found at:', executable || '(empty path)');
-    return false;
-  } catch (e) {
-    console.error('[BDRIS] Puppeteer verification failed:', e.message);
-    return false;
-  }
-}
-
 (async () => {
-  // During npm install, always install and verify managed Chrome if system Chrome is absent.
-  if (process.argv.includes('--install-only')) {
-    installManagedChrome();
-    if (!(await verifyManagedChrome())) process.exit(1);
-    process.exit(0);
+  let chrome = findChrome(cacheDir);
+  if (!chrome) installManagedChrome();
+  chrome = findChrome(cacheDir);
+  if (!chrome) {
+    console.error('[BDRIS] Puppeteer Chrome not found under:', cacheDir);
+    process.exit(1);
   }
-
-  // Before start, verify the browser; if a build artifact did not retain the cache,
-  // repair it before the server starts instead of allowing a runtime PDF error.
-  if (!(await verifyManagedChrome())) {
-    installManagedChrome();
-    if (!(await verifyManagedChrome())) process.exit(1);
-  }
+  process.env.PUPPETEER_EXECUTABLE_PATH = chrome;
+  console.log('[BDRIS] Puppeteer Chrome verified:', chrome);
 })();
