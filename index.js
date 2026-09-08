@@ -9,7 +9,6 @@ process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
 const puppeteer = require('puppeteer');
 const crypto = require('crypto');
 const cors = require('cors');
-const db = require('./db');
 const app = express();
 
 app.use(cors());
@@ -41,7 +40,7 @@ app.get('/fonts/:file', (req, res) => {
 });
 
 const sessions = new Map();
-const LOCAL_DIRECT_MODE = true;
+const LOCAL_DIRECT_MODE = false;
 
 // LOCAL DIRECT FINAL: main application APIs never require a user login.
 // Admin endpoints remain protected separately by requireAdmin.
@@ -65,34 +64,6 @@ const authStore=loadAuthStore();
 for(const u of (authStore.users||[])){ if(!Number.isFinite(Number(u.balance))) u.balance=0; }
 saveAuthStore(authStore);
 const authSessions=new Map();
-
-// Render/PostgreSQL persistence. JSON remains as a local fallback, while
-// Render uses DATABASE_URL for durable users, balances, transactions,
-// certificates and activity history.
-let dbReady = false;
-(async()=>{
-  try {
-    dbReady = await db.initDb();
-    if (dbReady) {
-      const existing = await db.getUsers();
-      if (existing && existing.length) {
-        authStore.users.splice(0, authStore.users.length, ...existing);
-        saveAuthStore(authStore);
-      } else {
-        for (const u of authStore.users) await db.upsertUser(u);
-      }
-      console.log('[BDRIS] PostgreSQL persistence:', 'READY');
-    } else {
-      console.log('[BDRIS] PostgreSQL persistence:', 'LOCAL JSON FALLBACK');
-    }
-  } catch (e) {
-    dbReady = false;
-    console.error('[BDRIS] PostgreSQL init failed:', e.message);
-  }
-})();
-
-function dbUser(u){ return u ? {id:u.id,username:u.username,name:u.name||'',passwordHash:u.passwordHash,accessToken:u.accessToken,enabled:u.enabled!==false,deviceId:u.deviceId||'',createdAt:u.createdAt||Date.now(),lastLoginAt:u.lastLoginAt||null,lastActiveAt:u.lastActiveAt||null,balance:Number(u.balance)||0,pdfLimit:Number(u.pdfLimit)||0,pdfUsed:Number(u.pdfUsed)||0} : null; }
-async function persistUser(u){ if(dbReady) await db.upsertUser(dbUser(u)); }
 
 // Bangladesh administrative Geo JSON fallback for Union offices.
 // The BDRIS result page sometimes leaves the Upazila/District portion blank.
@@ -190,7 +161,7 @@ async function applyUnionGeoFallback(data){
   return data;
 }
 
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now(),database:dbReady?'postgres':'json-fallback'}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now()}));
 app.get('/api/runtime/browser',(req,res)=>res.json({ok:true,cacheDir:process.env.PUPPETEER_CACHE_DIR,serviceDir:__dirname,node:process.version}));
 
 // Public lightweight health-check endpoint for uptime monitoring.
@@ -220,7 +191,7 @@ if(changedDefaultImages) savePDFImageLibrary(pdfImageStore);
 function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
-app.post('/api/auth/login',async (req,res)=>{
+app.post('/api/auth/login',(req,res)=>{
   const {username,password,accessToken,deviceId,userId,auth}=req.body||{};
   if(!username||!password||!deviceId) return res.status(400).json({ok:false,error:'Username, password এবং device তথ্য প্রয়োজন।'});
   let user=null;
@@ -232,7 +203,7 @@ app.post('/api/auth/login',async (req,res)=>{
   if(user.username!==username||user.passwordHash!==hashPassword(password)) return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});
   if(user.deviceId&&user.deviceId!==deviceId) return res.status(403).json({ok:false,error:'এই User account অন্য একটি device-এর সাথে যুক্ত আছে।'});
   if(!user.deviceId) user.deviceId=deviceId;
-  user.lastLoginAt=Date.now(); user.lastActiveAt=Date.now(); saveAuthStore(authStore); await persistUser(user); if(dbReady) await db.logActivity({user,action:'login'});
+  user.lastLoginAt=Date.now(); saveAuthStore(authStore);
   const token=newToken();
   authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken:user.accessToken,createdAt:Date.now()});
   res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});
@@ -251,106 +222,28 @@ function requireAuth(req,res,next){
   next();
 }
 function requireAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='admin')return res.status(403).json({ok:false,error:'Admin access required.'});req.auth=session;next();}
-app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth}));app.get('/api/balance',requireAuth,(req,res)=>res.json({ok:true,balance:0,charged:0,local:true}));
-app.post('/api/balance/charge',requireAuth,(req,res)=>res.json({ok:true,balance:0,charged:0,local:true}));
-
-app.get('/api/admin/users',requireAdmin,async (req,res)=>{
-  try {
-    const users = dbReady ? await db.getUsers() : authStore.users;
-    res.json({ok:true,users:users.map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})});
-  } catch(e){ res.status(500).json({ok:false,error:'Users load failed: '+e.message}); }
+app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth}));
+app.get('/api/balance',requireAuth,(req,res)=>{
+  const user=authStore.users.find(u=>u.id===req.auth.userId);
+  if(!user) return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
+  res.json({ok:true,balance:Number(user.balance)||0,charged:0,auth:sealUserPayload(user)});
+});
+app.post('/api/balance/charge',requireAuth,(req,res)=>{
+  const user=authStore.users.find(u=>u.id===req.auth.userId);
+  if(!user) return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
+  const amount=Number(req.body?.amount);
+  if(!Number.isFinite(amount)||amount<=0) return res.status(400).json({ok:false,error:'Invalid charge amount.'});
+  const current=Math.round((Number(user.balance)||0)*100)/100;
+  if(current < amount) return res.status(402).json({ok:false,error:`Balance কম আছে। প্রয়োজন ৳${amount}, বর্তমান ৳${current}।`,balance:current,auth:sealUserPayload(user)});
+  user.balance=Math.round((current-amount)*100)/100;
+  saveAuthStore(authStore);
+  res.json({ok:true,balance:user.balance,charged:amount,auth:sealUserPayload(user)});
 });
 
-app.post('/api/admin/users',requireAdmin,async (req,res)=>{
-  const {username,password,name=''}=req.body||{};
-  if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});
-  try{
-    const existing = dbReady ? await db.getUsers() : authStore.users;
-    if(existing.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});
-    const user={id:newToken().slice(0,16),username:String(username).trim(),name:String(name||'').trim(),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,lastActiveAt:null,balance:0};
-    authStore.users.push(user); saveAuthStore(authStore); await persistUser(user);
-    const {passwordHash,...safe}=user;
-    if(dbReady) await db.logActivity({user,action:'user_created'});
-    res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
-app.patch('/api/admin/users/:id',requireAdmin,async (req,res)=>{
-  try{
-    const user = dbReady ? await db.getUser(req.params.id) : authStore.users.find(u=>u.id===req.params.id);
-    if(!user)return res.status(404).json({ok:false,error:'User not found.'});
-    const before=Number(user.balance)||0;
-    if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;
-    if(req.body.resetDevice)user.deviceId='';
-    if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);
-    if(req.body.setPdfLimit!==undefined){const lim=Number(req.body.setPdfLimit);if(!Number.isInteger(lim)||lim<0)return res.status(400).json({ok:false,error:'Invalid PDF limit.'});user.pdfLimit=lim;}
-    let tx=null;
-    if(req.body.setBalance!==undefined){
-      const n=Number(req.body.setBalance); if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});
-      user.balance=Math.round(n*100)/100; tx={type:'balance_set',amount:user.balance-before,note:'Admin set balance'};
-    }
-    if(req.body.addBalance!==undefined){
-      const n=Number(req.body.addBalance); if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});
-      user.balance=Math.round((before+n)*100)/100; tx={type:'recharge',amount:n,note:'Admin added balance'};
-    }
-    const idx=authStore.users.findIndex(u=>u.id===user.id); if(idx>=0)authStore.users[idx]=user; else authStore.users.push(user); saveAuthStore(authStore); await persistUser(user);
-    if(dbReady){ if(tx) await db.logTransaction({user,type:tx.type,amount:tx.amount,previousBalance:before,newBalance:user.balance,note:tx.note}); await db.logActivity({user,action:'user_updated',meta:{enabled:user.enabled}}); }
-    const {passwordHash,...safe}=user; safe.auth=sealUserPayload(user); res.json({ok:true,user:safe});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
-app.delete('/api/admin/users/:id',requireAdmin,async (req,res)=>{
-  try{
-    const user = dbReady ? await db.getUser(req.params.id) : authStore.users.find(u=>u.id===req.params.id);
-    if(!user)return res.status(404).json({ok:false,error:'User not found.'});
-    if(dbReady) await db.query('DELETE FROM users WHERE id=$1',[req.params.id]);
-    const i=authStore.users.findIndex(u=>u.id===req.params.id); if(i>=0){authStore.users.splice(i,1);saveAuthStore(authStore);}
-    if(dbReady) await db.logActivity({user,action:'user_deleted'});
-    res.json({ok:true});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
-app.get('/api/admin/stats',requireAdmin,async (req,res)=>{
-  try{
-    if(!dbReady) return res.json({ok:true,source:'local',users:authStore.users.length,activeUsers:authStore.users.filter(u=>u.enabled).length,pdfToday:0,birthToday:0,deathToday:0,totalBalance:authStore.users.reduce((a,u)=>a+(Number(u.balance)||0),0),transactionsToday:0});
-    const dayStart=Date.now()-24*60*60*1000;
-    const [u,c,t,b,d]=await Promise.all([
-      db.query('SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE enabled=true)::int AS active, COALESCE(SUM(balance),0) AS balance FROM users'),
-      db.query('SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE created_at >= $1)::int AS today, COUNT(*) FILTER (WHERE created_at >= $1 AND registration_mode=\'birth\')::int AS birth, COUNT(*) FILTER (WHERE created_at >= $1 AND registration_mode=\'death\')::int AS death FROM certificates',[dayStart]),
-      db.query('SELECT COUNT(*)::int AS n FROM transactions WHERE created_at >= $1',[dayStart]),
-      db.query('SELECT COALESCE(SUM(amount),0) AS n FROM transactions WHERE created_at >= $1 AND type=\'recharge\'',[dayStart]),
-      db.query('SELECT COALESCE(SUM(amount),0) AS n FROM transactions WHERE created_at >= $1 AND type=\'pdf_charge\'',[dayStart])
-    ]);
-    res.json({ok:true,users:u.rows[0].n,activeUsers:u.rows[0].active,totalBalance:Number(u.rows[0].balance)||0,pdfToday:c.rows[0].today,birthToday:c.rows[0].birth,deathToday:c.rows[0].death,transactionsToday:t.rows[0].n,rechargeToday:Number(b.rows[0].n)||0,pdfChargesToday:Number(d.rows[0].n)||0});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
-app.get('/api/admin/transactions',requireAdmin,async (req,res)=>{
-  try{
-    if(!dbReady) return res.json({ok:true,transactions:[]});
-    const q=String(req.query.q||'').trim(); const limit=Math.min(Math.max(Number(req.query.limit)||100,1),500);
-    const r=await db.query(`SELECT id,user_id as "userId",username,type,amount,previous_balance as "previousBalance",new_balance as "newBalance",note,meta,created_at as "createdAt" FROM transactions WHERE ($1='' OR username ILIKE '%'||$1||'%' OR user_id ILIKE '%'||$1||'%') ORDER BY created_at DESC LIMIT $2`,[q,limit]);
-    res.json({ok:true,transactions:r.rows.map(x=>({...x,amount:Number(x.amount)||0,previousBalance:Number(x.previousBalance)||0,newBalance:Number(x.newBalance)||0}))});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
-app.get('/api/admin/certificates',requireAdmin,async (req,res)=>{
-  try{
-    if(!dbReady) return res.json({ok:true,certificates:[]});
-    const q=String(req.query.q||'').trim(); const type=String(req.query.type||'').trim(); const limit=Math.min(Math.max(Number(req.query.limit)||100,1),500);
-    const r=await db.query(`SELECT id,user_id as "userId",username,customer_name as "customerName",brn,certificate_type as "certificateType",registration_mode as "registrationMode",status,created_at as "createdAt",updated_at as "updatedAt" FROM certificates WHERE ($1='' OR customer_name ILIKE '%'||$1||'%' OR brn ILIKE '%'||$1||'%' OR username ILIKE '%'||$1||'%') AND ($2='' OR registration_mode=$2) ORDER BY created_at DESC LIMIT $3`,[q,type,limit]);
-    res.json({ok:true,certificates:r.rows});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
-app.get('/api/admin/activity',requireAdmin,async (req,res)=>{
-  try{ if(!dbReady)return res.json({ok:true,activity:[]}); const r=await db.query('SELECT id,user_id as "userId",username,action,meta,created_at as "createdAt" FROM activity_log ORDER BY created_at DESC LIMIT 200'); res.json({ok:true,activity:r.rows}); }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
-app.get('/api/admin/certificates/:id/pdf',requireAdmin,async (req,res)=>{
-  try{ if(!dbReady)return res.status(404).json({ok:false,error:'Database unavailable.'}); const r=await db.query('SELECT customer_name as "customerName",brn,pdf FROM certificates WHERE id=$1',[req.params.id]); if(!r.rows[0]||!r.rows[0].pdf)return res.status(404).json({ok:false,error:'PDF পাওয়া যায়নি।'}); const safe=String(r.rows[0].customerName||r.rows[0].brn||'certificate').replace(/[^a-zA-Z0-9_-]/g,'_'); res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${safe}.pdf"`,'Cache-Control':'no-store'}); res.send(r.rows[0].pdf); }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-
+app.get('/api/admin/users',requireAdmin,(req,res)=>res.json({ok:true,users:authStore.users.map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})}));
+app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
+app.patch('/api/admin/users/:id',requireAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;safe.auth=sealUserPayload(user);res.json({ok:true,user:safe});});
+app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);res.json({ok:true});});
 app.use('/api',(req,res,next)=>{if(req.path.startsWith('/auth/'))return next();return requireAuth(req,res,next);});
 
 
@@ -439,24 +332,7 @@ async function launchBrowser() {
         process.platform === 'win32' ? path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)','Google','Chrome','Application','chrome.exe') : null,
         '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'
     ].filter(Boolean);
-    function findManagedChrome(dir) {
-        if (!fs.existsSync(dir)) return null;
-        const stack = [{ dir, depth: 0 }];
-        while (stack.length) {
-            const item = stack.pop();
-            if (item.depth > 8) continue;
-            let entries;
-            try { entries = fs.readdirSync(item.dir, { withFileTypes: true }); } catch (_) { continue; }
-            for (const e of entries) {
-                const p = path.join(item.dir, e.name);
-                if (e.isFile() && e.name === 'chrome') return p;
-                if (e.isDirectory() && !e.name.startsWith('.')) stack.push({ dir: p, depth: item.depth + 1 });
-            }
-        }
-        return null;
-    }
     let executablePath = candidates.find(p => typeof p === 'string' && fs.existsSync(p)) || null;
-    if (!executablePath) executablePath = findManagedChrome(cacheDir);
     if (!executablePath) {
         try {
             const resolved = await puppeteer.executablePath();
@@ -652,27 +528,6 @@ app.post('/api/generate-pdf', async (req, res) => {
    STEP 1
    BDRIS OPEN + BRN + DOB + CAPTCHA
 ========================================================= */
-
-app.post('/api/certificates',requireAuth,async (req,res)=>{
-  try{
-    const c=req.body||{}; const formData=c.formData||{}; const pdfBase64=String(c.pdfBase64||'');
-    const pdf=pdfBase64 ? Buffer.from(pdfBase64.replace(/^data:application\/pdf;base64,/i,''),'base64') : null;
-    if(pdf && pdf.length>8*1024*1024) return res.status(413).json({ok:false,error:'PDF 8MB-এর বেশি হতে পারবে না।'});
-    const id=String(c.id||newToken().slice(0,24)); const now=Date.now();
-    const cert={id,userId:req.auth?.userId||null,username:req.auth?.username||null,customerName:String(formData.in_nameBn||formData.in_nameEn||c.customerName||''),brn:String(formData.in_brn||c.brn||''),certificateType:c.certificateType||'new',registrationMode:c.registrationMode||'birth',status:'completed',createdAt:Number(c.createdAt)||now,updatedAt:now,formData,currentData:c.currentData||null,meta:{selectedBengaliFont:c.selectedBengaliFont||'',selectedPDFImageId:c.selectedPDFImageId||'',selectedPDFImageName:c.selectedPDFImageName||'',imagePositionX:c.imagePositionX,imagePositionY:c.imagePositionY,imageZoom:c.imageZoom,imageWidth:c.imageWidth,imageHeight:c.imageHeight},pdf};
-    if(dbReady){
-      let u=null;
-      if(req.auth?.userId && req.auth.userId!=='local'){
-        u=await db.getUser(req.auth.userId);
-        if(u && Number(u.pdfLimit)>0 && (Number(u.pdfUsed)||0)+1>Number(u.pdfLimit)) return res.status(403).json({ok:false,error:'PDF limit exceeded.'});
-      }
-      await db.saveCertificate(cert);
-      if(u) await db.query('UPDATE users SET pdf_used=$1,last_active_at=$2 WHERE id=$3',[(Number(u.pdfUsed)||0)+1,Date.now(),u.id]);
-      await db.logActivity({user:req.auth,action:'certificate_saved',meta:{certificateId:id,brn:cert.brn,registrationMode:cert.registrationMode}});
-    } res.json({ok:true,id,stored:dbReady});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
-});
-app.delete('/api/certificates/:id',requireAuth,async(req,res)=>{try{if(dbReady)await db.deleteCertificate(req.params.id);res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 
 app.post('/api/init-search', async (req, res) => {
 

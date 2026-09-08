@@ -58,19 +58,23 @@ function resetPDFImageAdjust(){imagePositionX=0;imagePositionY=0;imageZoom=100;i
 function formatCertificateAddress(value, lang='bn') {
   let text = String(value ?? '').replace(/\r/g, '').trim();
   if (!text) return '';
+  // Keep the supplied address content, only normalize spacing/punctuation for clean certificate lines.
   text = text.replace(/[ \t]*,[ \t]*/g, ', ').replace(/,{2,}/g, ',').replace(/^[, ]+|[, ]+$/g, '');
   text = text.replace(/[ \t]{2,}/g, ' ');
-  if (lang === 'en') text = text.toLowerCase().replace(/(^|[\s\-\/\(])([a-z])/g, (_, p, c) => p + c.toUpperCase());
   const parts = text.split(/\n+/).map(x => x.trim()).filter(Boolean);
-  const max = lang === 'bn' ? 30 : 36;
+  const max = lang === 'bn' ? 29 : 37;
   const lines = [];
   for (const raw of parts) {
     const chunks = raw.split(/,\s*/).map(x => x.trim()).filter(Boolean);
     let line = '';
     for (const chunk of chunks) {
       const candidate = line ? `${line}, ${chunk}` : chunk;
-      if (line && candidate.length > max) { lines.push(line + ','); line = chunk; }
-      else line = candidate;
+      if (line && candidate.length > max) {
+        lines.push(line + ',');
+        line = chunk;
+      } else {
+        line = candidate;
+      }
     }
     if (line) lines.push(line);
   }
@@ -299,7 +303,7 @@ function status(text, type = "") {
 
 function capitalizeCase(value) {
   if (value === null || value === undefined) return "";
-  return String(value).trim().toLowerCase().replace(/[a-z]+/g, word => word.charAt(0).toUpperCase() + word.slice(1));
+  return String(value).trim().toLowerCase().replace(/\b[a-z]/g, letter => letter.toUpperCase());
 }
 
 function formatDateDDMMYYYY(value) {
@@ -1116,10 +1120,10 @@ async function generatePDF(options = {}) {
   }[c]));
 
   const nameBn = $("in_nameBn").value.trim();
-  const nameEn = capitalizeCase($("in_nameEn").value.trim());
+  const nameEn = $("in_nameEn").value.trim();
   const dob = $("in_dob").value.trim();
   const birthDate = registrationMode === 'death' ? ($("in_birthDate")?.value.trim() || formatDateDDMMYYYY(currentData?.dob || '')) : '';
-  const sex = capitalizeCase($("in_sex").value.trim());
+  const sex = $("in_sex").value.trim();
   const inWord = $("in_inWord").value.trim() || (registrationMode === 'death' ? dateToInWord(dob) : dateToInWord(dob));
   const brn = $("in_brn").value.trim();
   const regDate = $("in_regDate").value.trim();
@@ -1127,19 +1131,19 @@ async function generatePDF(options = {}) {
   const regOffice = capitalizeCase($("in_registrationOffice").value.trim());
   const localOffice = capitalizeCase($("in_upazilaPouroshavaUnion").value.trim());
   const fatherBn = $("in_fatherBn").value.trim();
-  const fatherEn = capitalizeCase($("in_fatherEn").value.trim());
+  const fatherEn = $("in_fatherEn").value.trim();
   const fatherNatBn = $("in_fatherNationalityBn").value.trim();
-  const fatherNatEn = capitalizeCase($("in_fatherNationalityEn").value.trim());
+  const fatherNatEn = $("in_fatherNationalityEn").value.trim();
   const motherBn = $("in_motherBn").value.trim();
-  const motherEn = capitalizeCase($("in_motherEn").value.trim());
+  const motherEn = $("in_motherEn").value.trim();
   const motherNatBn = $("in_motherNationalityBn").value.trim();
-  const motherNatEn = capitalizeCase($("in_motherNationalityEn").value.trim());
+  const motherNatEn = $("in_motherNationalityEn").value.trim();
   const pobBn = $("in_pobBn").value.trim();
-  const pobEn = capitalizeCase($("in_pobEn").value.trim());
+  const pobEn = $("in_pobEn").value.trim();
   const addrBn = registrationMode === 'death' ? '' : formatCertificateAddress($("in_addrBn").value, 'bn');
   const addrEn = registrationMode === 'death' ? '' : formatCertificateAddress($("in_addrEn").value, 'en');
   const deathCauseBn = $("in_deathCauseBn")?.value.trim() || '';
-  const deathCauseEn = capitalizeCase($("in_deathCauseEn")?.value.trim() || '');
+  const deathCauseEn = $("in_deathCauseEn")?.value.trim() || '';
   // Use one embedded, mobile-safe Bengali font for certificate rendering.
   // The three legacy font names remain selectable in the UI for compatibility,
   // but generated certificates always use the embedded Noto Sans Bengali font.
@@ -1192,30 +1196,27 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .reg-num-value { font-family: Arial, sans-serif !important; font-weight: 700 !important; letter-spacing: .15px; }
 .brn-label-normal{font-family:Arial,sans-serif!important;font-weight:400!important}.brn-value-bold{font-family:Arial,sans-serif!important;font-weight:700!important}
 .meta-value-row td { position: relative; top: -0.5mm; }
-.info-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 60px; border: none; }
-.info-table td { padding: 4px 0; vertical-align: top; font-size: 10.5pt; line-height: 1.25; position: relative; top: -3mm; border: none; }
-.info-table .label-bn-main,.info-table .address-bn-font,.info-table .value-bn-main { font-size: 11.8pt !important; line-height: 1.22 !important; }
-.info-table .label-en,.info-table .value-en { font-size: 11.2pt !important; line-height: 1.25 !important; }
-.info-table .value-en-text,.info-table .address-en-block { font-size: 11.2pt !important; line-height: 1.25 !important; }
+.info-table { width: 100%; border-collapse: collapse; margin-bottom: 60px; border: none; }
+.info-table td { padding: 6.5px 0; vertical-align: top; font-size: 10.5pt; line-height: 1.4; position: relative; top: -3mm; border: none; }
 .dob-row td { top: -5mm !important; }
 .img-row-fix td { top: -7mm !important; }
 .address-row-shift td { top: 0 !important; }
-.label-bn-main { width: 18%; font-size: 11.8pt !important; font-weight: 400; }
-.address-bn-font { width: 18%; font-size: 11.8pt !important; font-weight: 400; }
-.colon-cell { width: 3%; text-align: center; position: relative; left: 0; }
-.value-bn-main { width: 32%; font-size: 11.8pt !important; font-weight: 400; padding-right: 4px; }
-.value-bn-shift { position: relative; left: 0; white-space: pre-line; overflow-wrap:anywhere; word-break:normal; line-height:1.28; }
-.label-en { width: 11%; font-size: 11.2pt !important; position: relative; left: 0; }
-.value-en { width: 36%; font-size: 11.2pt !important; position: relative; left: 0; overflow-wrap: anywhere; word-break: normal; }
-.value-en-text { position: relative; left: 0; overflow-wrap: anywhere; word-break: normal; }
-.address-en-block { display: inline-block; vertical-align: top; width: 100%; position: relative; left: 0; white-space:pre-line; overflow-wrap:anywhere; word-break:normal; line-height:1.25; }
+.label-bn-main { width: 18%; font-size: 13.5pt !important; font-weight: 400; }
+.address-bn-font { width: 18%; font-size: 12.5pt !important; font-weight: 400; }
+.colon-cell { width: 3%; text-align: center; position: relative; left: 2mm; }
+.value-bn-main { width: 32%; font-size: 12.5pt !important; font-weight: 400; padding-right: 10px; }
+.value-bn-shift { position: relative; left: 3mm; white-space: pre-line; overflow-wrap:anywhere; word-break:normal; line-height:1.28; }
+.label-en { width: 11%; font-size: 11pt; position: relative; left: 0; }
+.value-en { width: 36%; font-size: 11pt; position: relative; left: 0; }
+.value-en-text { position: relative; left: 3mm; }
+.address-en-block { display: inline-block; vertical-align: top; width: calc(100% - 3mm); position: relative; left: 3mm; white-space:pre-line; overflow-wrap:anywhere; line-height:1.28; }
 .dob-value-fix { position: relative; left: 3mm; }
 .birth-date-row td { top: -5mm !important; padding: 1px 0 !important; line-height: 1.15 !important; }
 .death-date-row td { top: -5mm !important; padding: 1px 0 !important; line-height: 1.15 !important; }
 .death-date-row { height: auto !important; }
 .inword-value-fix { position: relative; left: 3mm; display: inline-block; width: calc(100% - 6mm); font-style: italic !important; font-synthesis: auto !important; transform: skewX(-8deg); transform-origin: left center; }
 .sex-container { position: relative; left: 1mm; white-space: nowrap; display: block; text-align: left; }
-.sex-container-fixed { position: relative !important; left: 0 !important; top: 0 !important; margin: 0 !important; padding: 0 !important; white-space: nowrap !important; text-align: left !important; display:block !important; }
+.sex-container-fixed { position: relative !important; left: 1mm !important; top: 0 !important; margin: 0 !important; padding: 0 !important; white-space: nowrap !important; text-align: left !important; }
 .footer-signatures { position: absolute; bottom: 47mm; left: 22mm; right: 22mm; width: calc(100% - 44mm); z-index: 1; }
 .sig-table { width: 100%; border-collapse: collapse; border: none; }
 .pdf-image-overlay { position: absolute; left: 5mm; bottom: 5mm; width: 200mm; height: 90mm; overflow: hidden; pointer-events: none; z-index: 100; display: flex; align-items: center; justify-content: center; }
@@ -1589,7 +1590,7 @@ body:not(.login-locked) .close-preview{background:#fff !important;color:#334155 
     <td style="text-align:left;padding-left:12mm">${escPdf(issuanceDate)}</td>
   </tr></table>
 
-  <table class="info-table"><colgroup><col style="width:18%"><col style="width:3%"><col style="width:32%"><col style="width:11%"><col style="width:36%"></colgroup>
+  <table class="info-table">
     ${registrationMode === 'death' ? `
     <tr class="birth-date-row"><td style="width:18%;font-style:normal !important">Date of Birth</td><td class="colon-cell">:</td><td style="width:32%"><span class="dob-value-fix">${escPdf(birthDate)}</span></td><td colspan="2" style="width:50%;padding-left:26mm !important;padding-right:0 !important;vertical-align:top !important"><span class="sex-container sex-container-fixed">Sex :&nbsp;&nbsp;${escPdf(sex)}</span></td></tr>
     <tr class="death-date-row"><td style="width:18%;font-style:normal !important">Date of Death</td><td class="colon-cell">:</td><td colspan="3"><span class="dob-value-fix">${escPdf(dob)}</span></td></tr>` : `
