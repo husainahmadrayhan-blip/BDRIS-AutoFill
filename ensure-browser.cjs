@@ -38,11 +38,12 @@ function installManagedChrome() {
   }
 }
 
-function verifyManagedChrome() {
+async function verifyManagedChrome() {
   try {
     const puppeteer = require('puppeteer');
-    const executable = puppeteer.executablePath();
-    if (executable && fs.existsSync(executable)) {
+    // Puppeteer 25.x can expose executablePath() as a Promise.
+    const executable = await puppeteer.executablePath();
+    if (typeof executable === 'string' && executable && fs.existsSync(executable)) {
       console.log('[BDRIS] Puppeteer Chrome verified:', executable);
       return true;
     }
@@ -54,16 +55,18 @@ function verifyManagedChrome() {
   }
 }
 
-// During npm install, always install and verify managed Chrome if system Chrome is absent.
-if (process.argv.includes('--install-only')) {
-  installManagedChrome();
-  if (!verifyManagedChrome()) process.exit(1);
-  process.exit(0);
-}
+(async () => {
+  // During npm install, always install and verify managed Chrome if system Chrome is absent.
+  if (process.argv.includes('--install-only')) {
+    installManagedChrome();
+    if (!(await verifyManagedChrome())) process.exit(1);
+    process.exit(0);
+  }
 
-// Before start, verify the browser; if a build artifact did not retain the cache,
-// repair it before the server starts instead of allowing a runtime PDF error.
-if (!verifyManagedChrome()) {
-  installManagedChrome();
-  if (!verifyManagedChrome()) process.exit(1);
-}
+  // Before start, verify the browser; if a build artifact did not retain the cache,
+  // repair it before the server starts instead of allowing a runtime PDF error.
+  if (!(await verifyManagedChrome())) {
+    installManagedChrome();
+    if (!(await verifyManagedChrome())) process.exit(1);
+  }
+})();
