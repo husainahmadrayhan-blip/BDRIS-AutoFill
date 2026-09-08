@@ -582,20 +582,7 @@ body:not(.login-locked) #chatButton,body:not(.login-locked) .chat-button,body:no
 </style>
 
 
-<style id="local-direct-mode">
-#loginScreen{display:none!important}
-body{overflow:auto!important}
-#appShell{display:block!important}
-</style>
-<script>
-/* LOCAL DIRECT FINAL: no account, no login, no access link. */
-document.documentElement.setAttribute('data-local-direct','true');
-document.addEventListener('DOMContentLoaded',()=>{ 
-  document.body.classList.remove('login-locked');
-  const ls=document.getElementById('loginScreen');
-  if(ls) ls.style.display='none';
-});
-</script>
+<!-- Production access mode: user login is required for protected app APIs. -->
 <style id="button-animation-fix">
 button,.btn,input[type="button"],input[type="submit"]{position:relative;overflow:hidden;transition:transform .16s ease,box-shadow .22s ease,filter .22s ease!important;will-change:transform}
 button:hover,.btn:hover,input[type="button"]:hover,input[type="submit"]:hover{transform:translateY(-1px);filter:brightness(1.04)}
@@ -761,13 +748,12 @@ function getDeviceId(){let id=localStorage.getItem(DEVICE_KEY);if(!id){id=crypto
 const API_BASE=(location.protocol==='file:'?'http://localhost:3000':''); const originalFetch=window.fetch.bind(window);window.fetch=async function(input,init={}){const url=typeof input==='string'?input:(input?.url||'');if(url.startsWith('/api/')&&!url.includes('/api/auth/login')&&!url.includes('/api/auth/admin-login'))init={...init,headers:{...(init.headers||{}),Authorization:'Bearer '+(localStorage.getItem(AUTH_KEY)||''),'X-Device-Id':getDeviceId()}};return originalFetch((typeof input==='string'&&input.startsWith('/api/')&&location.protocol==='file:')?API_BASE+input:input,init)};
 async function doLogin(e){e.preventDefault();const btn=$('loginBtn'),msg=$('loginMessage'),screen=$('loginScreen');screen.classList.remove('login-error','login-success','child-pull');screen.classList.add('child-pull');msg.className='login-message';msg.textContent='Verifying secure access…';btn.disabled=true;btn.classList.add('loading');try{if(!accessToken)throw Error('এই Login Link-এ access code নেই। Admin থেকে তৈরি করা user link ব্যবহার করুন।');const r=await originalFetch((location.protocol==='file:'?API_BASE:'')+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('loginUsername').value.trim(),password:$('loginPassword').value,accessToken:accessToken||'',deviceId:getDeviceId(),userId:accessUserId||'',auth:accessAuth||''})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||'Login failed');localStorage.setItem(AUTH_KEY,d.token);localStorage.setItem('BDRIS_USER_ID',d.user.id);sessionStorage.setItem('BDRIS_ACCESS_TOKEN',accessToken);if(accessUserId)sessionStorage.setItem('BDRIS_ACCESS_USER_ID',accessUserId);if(d.auth)persistFreshAuth(d);else if(accessAuth)sessionStorage.setItem('BDRIS_ACCESS_AUTH',accessAuth);screen.classList.add('login-success');msg.className='login-message success';msg.textContent='Login successful. Opening system…';setTimeout(()=>{screen.classList.add('hidden');document.body.classList.remove('login-locked')},650)}catch(err){screen.classList.add('login-error');msg.className='login-message error';msg.textContent=(err&&err.name==='TypeError'&&/fetch/i.test(err.message))?'Server Connection Error: Server চালু নেই বা এই page সরাসরি file:// থেকে খোলা হয়েছে। RUN-SERVER.bat চালু করে http://localhost:3000 খুলুন।':(/Username বা Password ভুল/i.test(err.message||'')?'সঠিক পাসওয়ার্ড দিন।':(err.message||'Login failed'))}finally{btn.disabled=false;btn.classList.remove('loading')}}
 async function bootAuth(){const token=localStorage.getItem(AUTH_KEY);if(!token)return;try{const r=await originalFetch('/api/auth/me',{headers:{Authorization:'Bearer '+token,'X-Device-Id':getDeviceId()}});if(r.ok){const d=await r.json().catch(()=>null);if(!accessToken||d?.session?.accessToken===accessToken){$('loginScreen').classList.add('hidden');document.body.classList.remove('login-locked');return}}}catch(_){}localStorage.removeItem(AUTH_KEY)}
-// LOCAL DIRECT MODE: no login required. Main app opens immediately.
-// The local server also bypasses user authentication for main-app API routes.
-try {
-  document.body.classList.remove('login-locked');
-  const ls=$('loginScreen'); if(ls){ls.classList.add('hidden');ls.style.display='none';}
-  localStorage.removeItem(AUTH_KEY);
-} catch (_) {}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const form=$('loginForm');
+  if(form) form.addEventListener('submit',doLogin);
+  bootAuth();
+});
 
 let currentSessionId = null;
 let mathCaptchaA = 0, mathCaptchaB = 0, mathCaptchaOp = '+';
