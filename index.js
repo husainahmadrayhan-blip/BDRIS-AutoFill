@@ -9,9 +9,18 @@ process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
 const puppeteer = require('puppeteer');
 const crypto = require('crypto');
 const cors = require('cors');
+const db = require('./db');
 const app = express();
 
 app.use(cors());
+app.use((req,res,next)=>{
+  if(req.path==='/' || req.path.endsWith('.html') || req.path.startsWith('/api/')){
+    res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma','no-cache');
+    res.setHeader('Expires','0');
+  }
+  next();
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(__dirname));
 // Explicit font route for Render/deployment environments where nested static
@@ -32,6 +41,16 @@ app.get('/fonts/:file', (req, res) => {
 });
 
 const sessions = new Map();
+const LOCAL_DIRECT_MODE = true;
+
+// LOCAL DIRECT FINAL: main application APIs never require a user login.
+// Admin endpoints remain protected separately by requireAdmin.
+app.use('/api', (req, res, next) => {
+  if (LOCAL_DIRECT_MODE && !req.path.startsWith('/auth/admin') && !req.path.startsWith('/admin/')) {
+    req.auth = {kind:'local', userId:'local', username:'local', name:'Local User', accessToken:'LOCAL', createdAt:Date.now()};
+  }
+  next();
+});
 
 const AUTH_DIR = path.join(__dirname, '.private');
 const AUTH_FILE = path.join(AUTH_DIR, 'users.json');
@@ -46,7 +65,132 @@ const authStore=loadAuthStore();
 for(const u of (authStore.users||[])){ if(!Number.isFinite(Number(u.balance))) u.balance=0; }
 saveAuthStore(authStore);
 const authSessions=new Map();
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now()}));
+
+// Render/PostgreSQL persistence. JSON remains as a local fallback, while
+// Render uses DATABASE_URL for durable users, balances, transactions,
+// certificates and activity history.
+let dbReady = false;
+(async()=>{
+  try {
+    dbReady = await db.initDb();
+    if (dbReady) {
+      const existing = await db.getUsers();
+      if (existing && existing.length) {
+        authStore.users.splice(0, authStore.users.length, ...existing);
+        saveAuthStore(authStore);
+      } else {
+        for (const u of authStore.users) await db.upsertUser(u);
+      }
+      console.log('[BDRIS] PostgreSQL persistence:', 'READY');
+    } else {
+      console.log('[BDRIS] PostgreSQL persistence:', 'LOCAL JSON FALLBACK');
+    }
+  } catch (e) {
+    dbReady = false;
+    console.error('[BDRIS] PostgreSQL init failed:', e.message);
+  }
+})();
+
+function dbUser(u){ return u ? {id:u.id,username:u.username,name:u.name||'',passwordHash:u.passwordHash,accessToken:u.accessToken,enabled:u.enabled!==false,deviceId:u.deviceId||'',createdAt:u.createdAt||Date.now(),lastLoginAt:u.lastLoginAt||null,lastActiveAt:u.lastActiveAt||null,balance:Number(u.balance)||0,pdfLimit:Number(u.pdfLimit)||0,pdfUsed:Number(u.pdfUsed)||0} : null; }
+async function persistUser(u){ if(dbReady) await db.upsertUser(dbUser(u)); }
+
+// Bangladesh administrative Geo JSON fallback for Union offices.
+// The BDRIS result page sometimes leaves the Upazila/District portion blank.
+// In that case we resolve the Union -> Upazila -> District hierarchy from a
+// cached bilingual Bangladesh geo dataset. The cache is refreshed only when
+// needed, so normal Auto Fill remains fast.
+const BD_GEO_URL = 'https://iqbalhasandev.github.io/bangladesh-geo-json/bangladesh-geo.json';
+const BD_GEO_CACHE = path.join(__dirname, 'data', 'bangladesh-geo.json');
+let bdGeoMemory = null;
+let bdGeoLoading = null;
+function geoNorm(value){
+  return String(value ?? '').toLowerCase().normalize('NFKC').replace(/[\u200c\u200d]/g,'').replace(/[^a-z0-9\u0980-\u09ff]+/g,'');
+}
+function geoClean(value){ return String(value ?? '').replace(/\s+/g,' ').trim(); }
+async function loadBangladeshGeo(){
+  if (Array.isArray(bdGeoMemory)) return bdGeoMemory;
+  if (bdGeoLoading) return bdGeoLoading;
+  bdGeoLoading = (async()=>{
+    try {
+      if (fs.existsSync(BD_GEO_CACHE)) {
+        const cached = JSON.parse(fs.readFileSync(BD_GEO_CACHE,'utf8'));
+        if (Array.isArray(cached) && cached.length) {
+          bdGeoMemory = cached;
+          return cached;
+        }
+      }
+    } catch (_) {}
+    try {
+      if (typeof fetch !== 'function') return [];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      try {
+        const r = await fetch(BD_GEO_URL, { headers:{'Accept':'application/json'}, signal:controller.signal });
+        if (!r.ok) throw new Error(`Geo data HTTP ${r.status}`);
+        const data = await r.json();
+        if (!Array.isArray(data) || !data.length) throw new Error('Geo data empty');
+        fs.mkdirSync(path.dirname(BD_GEO_CACHE), {recursive:true});
+        fs.writeFileSync(BD_GEO_CACHE, JSON.stringify(data), 'utf8');
+        bdGeoMemory = data;
+        return data;
+      } finally { clearTimeout(timer); }
+    } catch (_) {
+      return [];
+    }
+  })().finally(()=>{bdGeoLoading=null;});
+  return bdGeoLoading;
+}
+async function resolveUnionGeo(unionValue){
+  const wanted = geoNorm(String(unionValue || '').replace(/\bunion\s+parishad\b/ig,'').replace(/\bunion\b/ig,'').replace(/ইউনিয়ন\s*পরিষদ|ইউনিয়ন\s*পরিষদ|ইউনিয়ন|ইউনিয়ন/gi,''));
+  if (!wanted) return null;
+  const tree = await loadBangladeshGeo();
+  if (!Array.isArray(tree)) return null;
+  let best = null;
+  for (const div of tree) {
+    for (const district of (div?.districts || [])) {
+      for (const upazila of (district?.upazilas || [])) {
+        for (const u of (upazila?.unions || [])) {
+          const n = geoNorm(u?.name);
+          const bn = geoNorm(u?.bn_name);
+          if (wanted === n || wanted === bn) return {union:u, upazila, district, division:div};
+          if (!best && ((n && (n.includes(wanted) || wanted.includes(n))) || (bn && (bn.includes(wanted) || wanted.includes(bn))))) {
+            best = {union:u, upazila, district, division:div};
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+async function applyUnionGeoFallback(data){
+  if (!data || typeof data !== 'object') return data;
+  const office = geoClean(data.registrationOffice);
+  const fields = Array.isArray(data.allFields) ? data.allFields : [];
+  const isUnion = /union\s*(parishad)?|ইউনিয়ন|ইউনিয়ন/i.test(office) || fields.some(r => /union|ইউনিয়ন|ইউনিয়ন/i.test(`${r?.label||''} ${r?.englishLabel||''}`));
+  if (!isUnion) return data;
+
+  let unionName = '';
+  const unionRow = fields.find(r => /^(union|ইউনিয়ন|ইউনিয়ন)$/i.test(geoClean(r?.englishLabel || r?.label)) || /^(ইউনিয়ন|ইউনিয়ন)$/i.test(geoClean(r?.label)));
+  if (unionRow) unionName = geoClean(unionRow.englishValue || unionRow.value);
+  if (!unionName) unionName = office;
+  const hit = await resolveUnionGeo(unionName);
+  if (!hit) return data;
+
+  const upEn = geoClean(hit.upazila?.name);
+  const distEn = geoClean(hit.district?.name);
+  const current = geoClean(data.upazilaPouroshavaUnion);
+  const currentNorm = geoNorm(current);
+  const pieces = [];
+  if (upEn && !currentNorm.includes(geoNorm(upEn))) pieces.push(upEn);
+  if (distEn && !currentNorm.includes(geoNorm(distEn))) pieces.push(distEn);
+  // Only fill what is missing. Never overwrite an already populated value.
+  if (!current && (upEn || distEn)) data.upazilaPouroshavaUnion = [upEn, distEn].filter(Boolean).join(' ');
+  else if (pieces.length) data.upazilaPouroshavaUnion = [current, ...pieces].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  data.geoResolved = {source:'bangladesh-geo-json', union:geoClean(hit.union?.name || hit.union?.bn_name), upazila:upEn, district:distEn};
+  return data;
+}
+
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now(),database:dbReady?'postgres':'json-fallback'}));
 app.get('/api/runtime/browser',(req,res)=>res.json({ok:true,cacheDir:process.env.PUPPETEER_CACHE_DIR,serviceDir:__dirname,node:process.version}));
 
 // Public lightweight health-check endpoint for uptime monitoring.
@@ -76,31 +220,137 @@ if(changedDefaultImages) savePDFImageLibrary(pdfImageStore);
 function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
-app.post('/api/auth/login',(req,res)=>{const {username,password,accessToken,deviceId,userId,auth}=req.body||{};if(!username||!password||!accessToken||!deviceId)return res.status(400).json({ok:false,error:'Username, password, access link এবং device তথ্য প্রয়োজন।'});let user=authStore.users.find(u=>u.accessToken===accessToken);if(!user&&userId)user=authStore.users.find(u=>u.id===String(userId));if(!user&&auth){const r=openUserPayload(auth);if(r&&r.accessToken===accessToken&&r.id===String(userId||r.id)&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){user={...r,deviceId:'',lastLoginAt:null,balance:Number(r.balance)||0};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}if(!user||!user.enabled)return res.status(403).json({ok:false,error:'এই access link সক্রিয় নেই।'});if(user.username!==username||user.passwordHash!==hashPassword(password))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই access link অন্য একটি device-এর সাথে যুক্ত আছে।'});if(!user.deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken,createdAt:Date.now()});res.json({ok:true,token,user:{id:user.id,username:user.username,name:user.name||''}});});
-app.post('/api/auth/admin-login',(req,res)=>{const {username,password}=req.body||{};if(username!==authStore.admin.username||hashPassword(password||'')!==authStore.admin.passwordHash)return res.status(401).json({ok:false,error:'Admin username বা password ভুল।'});const token=newToken();authSessions.set(token,{kind:'admin',username,createdAt:Date.now()});res.json({ok:true,token});});
-function requireAuth(req,res,next){const session=authUser(req);if(!session)return res.status(401).json({ok:false,error:'Login required.'});req.auth=session;next();}
-function requireAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='admin')return res.status(403).json({ok:false,error:'Admin access required.'});req.auth=session;next();}
-app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth}));app.get('/api/balance',requireAuth,(req,res)=>{
-  const user=authStore.users.find(u=>u.id===req.auth.userId);
-  if(!user) return res.status(404).json({ok:false,error:'User not found.'});
-  if(!Number.isFinite(Number(user.balance))) user.balance=0;
-  res.json({ok:true,balance:Number(user.balance)});
+app.post('/api/auth/login',async (req,res)=>{
+  const {username,password,accessToken,deviceId,userId,auth}=req.body||{};
+  if(!username||!password||!deviceId) return res.status(400).json({ok:false,error:'Username, password এবং device তথ্য প্রয়োজন।'});
+  let user=null;
+  if(accessToken) user=authStore.users.find(u=>u.accessToken===accessToken);
+  if(!user&&userId) user=authStore.users.find(u=>u.id===String(userId));
+  if(!user&&auth){const r=openUserPayload(auth);if(r&&(!accessToken||r.accessToken===accessToken)&&(!userId||r.id===String(userId||r.id))&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){user={...r,deviceId:'',lastLoginAt:null,balance:Number(r.balance)||0};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}
+  if(!user) user=authStore.users.find(u=>u.username===username);
+  if(!user||!user.enabled) return res.status(403).json({ok:false,error:'এই User account সক্রিয় নেই।'});
+  if(user.username!==username||user.passwordHash!==hashPassword(password)) return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});
+  if(user.deviceId&&user.deviceId!==deviceId) return res.status(403).json({ok:false,error:'এই User account অন্য একটি device-এর সাথে যুক্ত আছে।'});
+  if(!user.deviceId) user.deviceId=deviceId;
+  user.lastLoginAt=Date.now(); user.lastActiveAt=Date.now(); saveAuthStore(authStore); await persistUser(user); if(dbReady) await db.logActivity({user,action:'login'});
+  const token=newToken();
+  authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken:user.accessToken,createdAt:Date.now()});
+  res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});
 });
-app.post('/api/balance/charge',requireAuth,(req,res)=>{
-  const user=authStore.users.find(u=>u.id===req.auth.userId);
-  if(!user) return res.status(404).json({ok:false,error:'User not found.'});
-  const amount=4;
-  user.balance=Number(user.balance)||0;
-  if(user.balance < amount) return res.status(402).json({ok:false,error:'Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳4।',balance:user.balance,required:amount});
-  user.balance=Math.round((user.balance-amount)*100)/100;
-  saveAuthStore(authStore);
-  res.json({ok:true,balance:user.balance,charged:amount});
+app.post('/api/auth/admin-login',(req,res)=>{const {username,password}=req.body||{};if(username!==authStore.admin.username||hashPassword(password||'')!==authStore.admin.passwordHash)return res.status(401).json({ok:false,error:'Admin username বা password ভুল।'});const token=newToken();authSessions.set(token,{kind:'admin',username,createdAt:Date.now()});res.json({ok:true,token});});
+function requireAuth(req,res,next){
+  // LOCAL DIRECT MODE: never require a user account for the main local application.
+  // Admin endpoints are still protected by requireAdmin.
+  if (LOCAL_DIRECT_MODE) {
+    req.auth={kind:'local',userId:'local',username:'local',name:'Local User',accessToken:'LOCAL',createdAt:Date.now()};
+    return next();
+  }
+  const session=authUser(req);
+  if(!session) return res.status(401).json({ok:false,error:'Login required.'});
+  req.auth=session;
+  next();
+}
+function requireAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='admin')return res.status(403).json({ok:false,error:'Admin access required.'});req.auth=session;next();}
+app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth}));app.get('/api/balance',requireAuth,(req,res)=>res.json({ok:true,balance:0,charged:0,local:true}));
+app.post('/api/balance/charge',requireAuth,(req,res)=>res.json({ok:true,balance:0,charged:0,local:true}));
+
+app.get('/api/admin/users',requireAdmin,async (req,res)=>{
+  try {
+    const users = dbReady ? await db.getUsers() : authStore.users;
+    res.json({ok:true,users:users.map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})});
+  } catch(e){ res.status(500).json({ok:false,error:'Users load failed: '+e.message}); }
 });
 
-app.get('/api/admin/users',requireAdmin,(req,res)=>res.json({ok:true,users:authStore.users.map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})}));
-app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
-app.patch('/api/admin/users/:id',requireAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe});});
-app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);res.json({ok:true});});
+app.post('/api/admin/users',requireAdmin,async (req,res)=>{
+  const {username,password,name=''}=req.body||{};
+  if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});
+  try{
+    const existing = dbReady ? await db.getUsers() : authStore.users;
+    if(existing.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});
+    const user={id:newToken().slice(0,16),username:String(username).trim(),name:String(name||'').trim(),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,lastActiveAt:null,balance:0};
+    authStore.users.push(user); saveAuthStore(authStore); await persistUser(user);
+    const {passwordHash,...safe}=user;
+    if(dbReady) await db.logActivity({user,action:'user_created'});
+    res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.patch('/api/admin/users/:id',requireAdmin,async (req,res)=>{
+  try{
+    const user = dbReady ? await db.getUser(req.params.id) : authStore.users.find(u=>u.id===req.params.id);
+    if(!user)return res.status(404).json({ok:false,error:'User not found.'});
+    const before=Number(user.balance)||0;
+    if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;
+    if(req.body.resetDevice)user.deviceId='';
+    if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);
+    if(req.body.setPdfLimit!==undefined){const lim=Number(req.body.setPdfLimit);if(!Number.isInteger(lim)||lim<0)return res.status(400).json({ok:false,error:'Invalid PDF limit.'});user.pdfLimit=lim;}
+    let tx=null;
+    if(req.body.setBalance!==undefined){
+      const n=Number(req.body.setBalance); if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});
+      user.balance=Math.round(n*100)/100; tx={type:'balance_set',amount:user.balance-before,note:'Admin set balance'};
+    }
+    if(req.body.addBalance!==undefined){
+      const n=Number(req.body.addBalance); if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});
+      user.balance=Math.round((before+n)*100)/100; tx={type:'recharge',amount:n,note:'Admin added balance'};
+    }
+    const idx=authStore.users.findIndex(u=>u.id===user.id); if(idx>=0)authStore.users[idx]=user; else authStore.users.push(user); saveAuthStore(authStore); await persistUser(user);
+    if(dbReady){ if(tx) await db.logTransaction({user,type:tx.type,amount:tx.amount,previousBalance:before,newBalance:user.balance,note:tx.note}); await db.logActivity({user,action:'user_updated',meta:{enabled:user.enabled}}); }
+    const {passwordHash,...safe}=user; safe.auth=sealUserPayload(user); res.json({ok:true,user:safe});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.delete('/api/admin/users/:id',requireAdmin,async (req,res)=>{
+  try{
+    const user = dbReady ? await db.getUser(req.params.id) : authStore.users.find(u=>u.id===req.params.id);
+    if(!user)return res.status(404).json({ok:false,error:'User not found.'});
+    if(dbReady) await db.query('DELETE FROM users WHERE id=$1',[req.params.id]);
+    const i=authStore.users.findIndex(u=>u.id===req.params.id); if(i>=0){authStore.users.splice(i,1);saveAuthStore(authStore);}
+    if(dbReady) await db.logActivity({user,action:'user_deleted'});
+    res.json({ok:true});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.get('/api/admin/stats',requireAdmin,async (req,res)=>{
+  try{
+    if(!dbReady) return res.json({ok:true,source:'local',users:authStore.users.length,activeUsers:authStore.users.filter(u=>u.enabled).length,pdfToday:0,birthToday:0,deathToday:0,totalBalance:authStore.users.reduce((a,u)=>a+(Number(u.balance)||0),0),transactionsToday:0});
+    const dayStart=Date.now()-24*60*60*1000;
+    const [u,c,t,b,d]=await Promise.all([
+      db.query('SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE enabled=true)::int AS active, COALESCE(SUM(balance),0) AS balance FROM users'),
+      db.query('SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE created_at >= $1)::int AS today, COUNT(*) FILTER (WHERE created_at >= $1 AND registration_mode=\'birth\')::int AS birth, COUNT(*) FILTER (WHERE created_at >= $1 AND registration_mode=\'death\')::int AS death FROM certificates',[dayStart]),
+      db.query('SELECT COUNT(*)::int AS n FROM transactions WHERE created_at >= $1',[dayStart]),
+      db.query('SELECT COALESCE(SUM(amount),0) AS n FROM transactions WHERE created_at >= $1 AND type=\'recharge\'',[dayStart]),
+      db.query('SELECT COALESCE(SUM(amount),0) AS n FROM transactions WHERE created_at >= $1 AND type=\'pdf_charge\'',[dayStart])
+    ]);
+    res.json({ok:true,users:u.rows[0].n,activeUsers:u.rows[0].active,totalBalance:Number(u.rows[0].balance)||0,pdfToday:c.rows[0].today,birthToday:c.rows[0].birth,deathToday:c.rows[0].death,transactionsToday:t.rows[0].n,rechargeToday:Number(b.rows[0].n)||0,pdfChargesToday:Number(d.rows[0].n)||0});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.get('/api/admin/transactions',requireAdmin,async (req,res)=>{
+  try{
+    if(!dbReady) return res.json({ok:true,transactions:[]});
+    const q=String(req.query.q||'').trim(); const limit=Math.min(Math.max(Number(req.query.limit)||100,1),500);
+    const r=await db.query(`SELECT id,user_id as "userId",username,type,amount,previous_balance as "previousBalance",new_balance as "newBalance",note,meta,created_at as "createdAt" FROM transactions WHERE ($1='' OR username ILIKE '%'||$1||'%' OR user_id ILIKE '%'||$1||'%') ORDER BY created_at DESC LIMIT $2`,[q,limit]);
+    res.json({ok:true,transactions:r.rows.map(x=>({...x,amount:Number(x.amount)||0,previousBalance:Number(x.previousBalance)||0,newBalance:Number(x.newBalance)||0}))});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.get('/api/admin/certificates',requireAdmin,async (req,res)=>{
+  try{
+    if(!dbReady) return res.json({ok:true,certificates:[]});
+    const q=String(req.query.q||'').trim(); const type=String(req.query.type||'').trim(); const limit=Math.min(Math.max(Number(req.query.limit)||100,1),500);
+    const r=await db.query(`SELECT id,user_id as "userId",username,customer_name as "customerName",brn,certificate_type as "certificateType",registration_mode as "registrationMode",status,created_at as "createdAt",updated_at as "updatedAt" FROM certificates WHERE ($1='' OR customer_name ILIKE '%'||$1||'%' OR brn ILIKE '%'||$1||'%' OR username ILIKE '%'||$1||'%') AND ($2='' OR registration_mode=$2) ORDER BY created_at DESC LIMIT $3`,[q,type,limit]);
+    res.json({ok:true,certificates:r.rows});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.get('/api/admin/activity',requireAdmin,async (req,res)=>{
+  try{ if(!dbReady)return res.json({ok:true,activity:[]}); const r=await db.query('SELECT id,user_id as "userId",username,action,meta,created_at as "createdAt" FROM activity_log ORDER BY created_at DESC LIMIT 200'); res.json({ok:true,activity:r.rows}); }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.get('/api/admin/certificates/:id/pdf',requireAdmin,async (req,res)=>{
+  try{ if(!dbReady)return res.status(404).json({ok:false,error:'Database unavailable.'}); const r=await db.query('SELECT customer_name as "customerName",brn,pdf FROM certificates WHERE id=$1',[req.params.id]); if(!r.rows[0]||!r.rows[0].pdf)return res.status(404).json({ok:false,error:'PDF পাওয়া যায়নি।'}); const safe=String(r.rows[0].customerName||r.rows[0].brn||'certificate').replace(/[^a-zA-Z0-9_-]/g,'_'); res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${safe}.pdf"`,'Cache-Control':'no-store'}); res.send(r.rows[0].pdf); }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
 app.use('/api',(req,res,next)=>{if(req.path.startsWith('/auth/'))return next();return requireAuth(req,res,next);});
 
 
@@ -179,42 +429,33 @@ const browserLaunchOptions = {
 // Resolve it before passing it to launch(), otherwise Chromium receives
 // "[object Promise]" as the executable path.
 async function launchBrowser() {
-    // Keep Puppeteer's cache fixed to the application directory so the build-time
-    // Chrome installation and runtime lookup always use the same location.
     const cacheDir = path.join(__dirname, '.cache', 'puppeteer');
     process.env.PUPPETEER_CACHE_DIR = cacheDir;
-
-    let executablePath = null;
-    try {
-        executablePath = await puppeteer.executablePath();
-    } catch (_) {
-        executablePath = null;
-    }
-
-    // If Render skipped the postinstall step or the cache was cleared, install
-    // the exact browser revision on first use, then resolve the path again.
-    if (!executablePath || typeof executablePath !== 'string' || !fs.existsSync(executablePath)) {
-        const { execFileSync } = require('child_process');
+    const candidates = [
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+        process.env.CHROME_PATH,
+        process.env.CHROMIUM_PATH,
+        process.platform === 'win32' ? path.join(process.env.PROGRAMFILES || 'C:\\Program Files','Google','Chrome','Application','chrome.exe') : null,
+        process.platform === 'win32' ? path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)','Google','Chrome','Application','chrome.exe') : null,
+        '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'
+    ].filter(Boolean);
+    let executablePath = candidates.find(p => typeof p === 'string' && fs.existsSync(p)) || null;
+    if (!executablePath) {
         try {
-            execFileSync('npx', ['puppeteer', 'browsers', 'install', 'chrome'], {
-                cwd: __dirname,
-                env: { ...process.env, PUPPETEER_CACHE_DIR: cacheDir },
-                stdio: 'inherit'
-            });
-            executablePath = await puppeteer.executablePath();
-        } catch (installError) {
-            throw new Error('Chrome install failed: ' + (installError?.message || installError));
-        }
+            const resolved = await puppeteer.executablePath();
+            if (typeof resolved === 'string' && resolved && fs.existsSync(resolved)) executablePath = resolved;
+        } catch (_) {}
     }
-
     const options = { ...browserLaunchOptions };
-    if (executablePath && typeof executablePath === 'string' && fs.existsSync(executablePath)) {
-        options.executablePath = executablePath;
-    } else {
-        throw new Error('Chrome executable not found after installation.');
+    if (executablePath) options.executablePath = executablePath;
+    try {
+        return await puppeteer.launch(options);
+    } catch (firstError) {
+        if (executablePath) {
+            try { return await puppeteer.launch({ ...browserLaunchOptions }); } catch (_) {}
+        }
+        throw new Error('Chrome/Chromium could not be started. Install Chrome or run `npx puppeteer browsers install chrome`. Original error: ' + (firstError?.message || firstError));
     }
-
-    return puppeteer.launch(options);
 }
 
 async function findFirst(page, selectors, timeout = 10000) {
@@ -240,29 +481,29 @@ async function findFirst(page, selectors, timeout = 10000) {
     }
 }
 
-let sharedBDRISBrowser = null;
-let sharedPDFBrowser = null;
-async function getSharedPDFBrowser() {
-    if (sharedPDFBrowser) {
-        try {
-            if (sharedPDFBrowser.connected) return sharedPDFBrowser;
-        } catch (_) {}
-        sharedPDFBrowser = null;
+// Use one warm Chromium process for both BDRIS lookup and PDF rendering.
+// Starting two separate Chrome processes on Render Free wastes memory and makes
+// the first Certificate Preview unnecessarily slow.
+let sharedBrowser = null;
+let sharedBrowserPromise = null;
+async function getSharedBrowser() {
+    if (sharedBrowser) {
+        try { if (sharedBrowser.connected) return sharedBrowser; } catch (_) {}
+        sharedBrowser = null;
     }
-    sharedPDFBrowser = await launchBrowser();
-    return sharedPDFBrowser;
-}
-
-async function getSharedBDRISBrowser() {
-    if (sharedBDRISBrowser) {
+    if (sharedBrowserPromise) return sharedBrowserPromise;
+    sharedBrowserPromise = (async()=>{
         try {
-            if (sharedBDRISBrowser.connected) return sharedBDRISBrowser;
-        } catch (_) {}
-        sharedBDRISBrowser = null;
-    }
-    sharedBDRISBrowser = await launchBrowser();
-    return sharedBDRISBrowser;
+            sharedBrowser = await launchBrowser();
+            return sharedBrowser;
+        } finally {
+            sharedBrowserPromise = null;
+        }
+    })();
+    return sharedBrowserPromise;
 }
+async function getSharedPDFBrowser() { return getSharedBrowser(); }
+async function getSharedBDRISBrowser() { return getSharedBrowser(); }
 
 async function setInputValue(element, value) {
     await element.evaluate((input, nextValue) => {
@@ -394,6 +635,27 @@ app.post('/api/generate-pdf', async (req, res) => {
    STEP 1
    BDRIS OPEN + BRN + DOB + CAPTCHA
 ========================================================= */
+
+app.post('/api/certificates',requireAuth,async (req,res)=>{
+  try{
+    const c=req.body||{}; const formData=c.formData||{}; const pdfBase64=String(c.pdfBase64||'');
+    const pdf=pdfBase64 ? Buffer.from(pdfBase64.replace(/^data:application\/pdf;base64,/i,''),'base64') : null;
+    if(pdf && pdf.length>8*1024*1024) return res.status(413).json({ok:false,error:'PDF 8MB-এর বেশি হতে পারবে না।'});
+    const id=String(c.id||newToken().slice(0,24)); const now=Date.now();
+    const cert={id,userId:req.auth?.userId||null,username:req.auth?.username||null,customerName:String(formData.in_nameBn||formData.in_nameEn||c.customerName||''),brn:String(formData.in_brn||c.brn||''),certificateType:c.certificateType||'new',registrationMode:c.registrationMode||'birth',status:'completed',createdAt:Number(c.createdAt)||now,updatedAt:now,formData,currentData:c.currentData||null,meta:{selectedBengaliFont:c.selectedBengaliFont||'',selectedPDFImageId:c.selectedPDFImageId||'',selectedPDFImageName:c.selectedPDFImageName||'',imagePositionX:c.imagePositionX,imagePositionY:c.imagePositionY,imageZoom:c.imageZoom,imageWidth:c.imageWidth,imageHeight:c.imageHeight},pdf};
+    if(dbReady){
+      let u=null;
+      if(req.auth?.userId && req.auth.userId!=='local'){
+        u=await db.getUser(req.auth.userId);
+        if(u && Number(u.pdfLimit)>0 && (Number(u.pdfUsed)||0)+1>Number(u.pdfLimit)) return res.status(403).json({ok:false,error:'PDF limit exceeded.'});
+      }
+      await db.saveCertificate(cert);
+      if(u) await db.query('UPDATE users SET pdf_used=$1,last_active_at=$2 WHERE id=$3',[(Number(u.pdfUsed)||0)+1,Date.now(),u.id]);
+      await db.logActivity({user:req.auth,action:'certificate_saved',meta:{certificateId:id,brn:cert.brn,registrationMode:cert.registrationMode}});
+    } res.json({ok:true,id,stored:dbReady});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+app.delete('/api/certificates/:id',requireAuth,async(req,res)=>{try{if(dbReady)await db.deleteCertificate(req.params.id);res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 
 app.post('/api/init-search', async (req, res) => {
 
@@ -717,102 +979,47 @@ app.post('/api/submit-captcha', async (req, res) => {
         }
 
 
-        /* RESULT LOAD */
-
+        /* RESULT LOAD — FAST / AJAX FRIENDLY */
+        // BDRIS can return the result through navigation OR AJAX. Waiting for
+        // networkidle2 and then waiting for two exact table rows caused a hard
+        // 20-second timeout even when the CAPTCHA was correct. Detect any real
+        // result/error signal first, then let the extractor decide what fields
+        // are actually available.
         await Promise.race([
-
             page.waitForNavigation({
-                waitUntil: 'networkidle2',
-                timeout: 15000
+                waitUntil: 'domcontentloaded',
+                timeout: 8000
             }).catch(() => {}),
 
-            page.waitForSelector(
-                'table, #result, .result, .details',
-                {
-                    timeout: 15000
-                }
-            ).catch(() => {})
-
+            page.waitForFunction(() => {
+                const text = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+                const html = document.documentElement?.innerHTML || '';
+                const hasRows = document.querySelectorAll('table tr').length > 1;
+                const hasResultContainer = !!document.querySelector('#result, .result, .details, [class*="result" i], [id*="result" i]');
+                const hasKnownResult = /নিবন্ধিত ব্যক্তির নাম|পিতার নাম|মাতার নাম|registered person|father.?s name|mother.?s name/i.test(text);
+                const hasCaptchaError = /captcha|ক্যাপচা|invalid|incorrect|সঠিক নয়|সঠিক নয়|ভুল কোড|verification failed/i.test(text);
+                return hasRows || hasResultContainer || hasKnownResult || hasCaptchaError || /certificate\/verify/i.test(html);
+            }, { timeout: 8000, polling: 100 }).catch(() => {})
         ]);
 
+        // Give a fast AJAX response a very small settling window. This is not a
+        // fixed 20-second wait and does not block on unrelated network requests.
+        await new Promise(resolve => setTimeout(resolve, 150));
 
         /* RESULT CHECK */
-
-        await page.waitForFunction(() => {
-
-            const rows =
-                [
-                    ...document.querySelectorAll(
-                        'table tr'
-                    )
-                ];
-
-
-            const getCells = row => {
-
-                return [
-                    ...row.querySelectorAll(
-                        'td, th'
-                    )
-                ].map(cell =>
-                    (cell.textContent || '')
-                        .replace(/\s+/g, ' ')
-                        .trim()
-                );
-
+        const pageSignal = await page.evaluate(() => {
+            const text = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+            return {
+                text,
+                hasRows: document.querySelectorAll('table tr').length > 1,
+                hasKnownResult: /নিবন্ধিত ব্যক্তির নাম|পিতার নাম|মাতার নাম|registered person|father.?s name|mother.?s name/i.test(text),
+                hasCaptchaError: /captcha|ক্যাপচা|invalid|incorrect|সঠিক নয়|সঠিক নয়|ভুল কোড|verification failed/i.test(text)
             };
+        }).catch(() => ({text:'',hasRows:false,hasKnownResult:false,hasCaptchaError:false}));
 
-
-            const hasPair =
-                (
-                    bengaliLabel,
-                    englishLabel
-                ) => {
-
-                    return rows.some(row => {
-
-                        const cells =
-                            getCells(row);
-
-
-                        return (
-
-                            cells.length >= 4 &&
-
-                            cells[0] === bengaliLabel &&
-
-                            cells[2] === englishLabel &&
-
-                            Boolean(cells[1]) &&
-
-                            Boolean(cells[3])
-
-                        );
-
-                    });
-
-                };
-
-
-            return (
-
-                hasPair(
-                    'পিতার নাম',
-                    "Father's Name"
-                )
-
-                &&
-
-                hasPair(
-                    'মাতার নাম',
-                    "Mother's Name"
-                )
-
-            );
-
-        }, {
-            timeout: 20000
-        });
+        if (pageSignal.hasCaptchaError && !pageSignal.hasKnownResult && !pageSignal.hasRows) {
+            throw new Error('CAPTCHA সঠিক হয়নি অথবা BDRIS যাচাই সম্পন্ন করতে পারেনি। নতুন CAPTCHA নিয়ে আবার চেষ্টা করুন।');
+        }
 
 
         /* =====================================================
@@ -1445,6 +1652,11 @@ app.post('/api/submit-captcha', async (req, res) => {
         }
 
 
+        // Union records can omit the Upazila/District value. Fill only the missing
+        // pieces from the cached Bangladesh administrative Geo JSON. City Corporation
+        // and Pourashava behaviour is intentionally left unchanged.
+        await applyUnionGeoFallback(data);
+
         /* =====================================================
            CLOSE
         ===================================================== */
@@ -1580,6 +1792,11 @@ app.listen(
         console.log(`📱 Same-device: http://127.0.0.1:${port}`);
         console.log('ℹ️ If running on a PC, open the PC LAN IP from the phone.');
         console.log('');
+        // Warm Chrome in the background after startup so the first Preview does not
+        // pay the full browser-launch cost. Fail silently; the normal lazy path remains.
+        setTimeout(() => {
+            getSharedBrowser().catch(() => {});
+        }, 2500);
 
     }
 );

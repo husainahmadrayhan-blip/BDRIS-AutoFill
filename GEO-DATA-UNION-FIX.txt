@@ -1,0 +1,12 @@
+UNION GEO DATA FIX
+
+For Union Parishad certificates, if Upazila/District data is blank in the BDRIS result,
+the server now resolves the Union -> Upazila -> District hierarchy from the Bangladesh
+administrative geo JSON dataset and fills only the missing part.
+
+City Corporation and Pourashava logic is unchanged.
+
+Geo data source:
+https://iqbalhasandev.github.io/bangladesh-geo-json/bangladesh-geo.json
+
+The data is cached locally in data/bangladesh-geo.json after the first successful lookup.

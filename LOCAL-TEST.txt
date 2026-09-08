@@ -1,0 +1,7 @@
+LOCAL TEST
+1. Extract this ZIP.
+2. Double-click RUN-SERVER.bat.
+3. Open http://localhost:3000
+4. Login with a user created by Admin, or an existing user username/password.
+5. Admin: http://localhost:3000/admin.html
+No manual CHROME_PATH/PUPPETEER commands are required when Chrome is installed normally.
