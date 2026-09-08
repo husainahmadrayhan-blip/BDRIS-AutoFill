@@ -9,6 +9,7 @@ process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
 const puppeteer = require('puppeteer');
 const crypto = require('crypto');
 const cors = require('cors');
+const { Pool } = require('pg');
 const app = express();
 
 app.use(cors());
@@ -59,11 +60,54 @@ function authSecret(){return crypto.createHash('sha256').update(String(process.e
 function sealUserPayload(user){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',authSecret(),iv);const plain=Buffer.from(JSON.stringify({id:user.id,username:user.username,name:user.name||'',passwordHash:user.passwordHash,accessToken:user.accessToken,enabled:user.enabled!==false,createdAt:user.createdAt||Date.now(),balance:Number(user.balance)||0}),'utf8');const enc=Buffer.concat([cipher.update(plain),cipher.final()]);const tag=cipher.getAuthTag();return Buffer.concat([iv,tag,enc]).toString('base64url');}
 function openUserPayload(value){try{const b=Buffer.from(String(value||''),'base64url');if(b.length<28)return null;const decipher=crypto.createDecipheriv('aes-256-gcm',authSecret(),b.subarray(0,12));decipher.setAuthTag(b.subarray(12,28));return JSON.parse(Buffer.concat([decipher.update(b.subarray(28)),decipher.final()]).toString('utf8'));}catch(_){return null;}}
 function loadAuthStore(){try{return JSON.parse(fs.readFileSync(AUTH_FILE,'utf8'));}catch(_){const store={users:[],admin:{username:process.env.ADMIN_USERNAME||'admin',passwordHash:hashPassword(process.env.ADMIN_PASSWORD||'change-this-admin-password')}};fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));return store;}}
-function saveAuthStore(store){fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));}
-const authStore=loadAuthStore();
+function saveAuthStore(store){
+  for(const u of (store.users||[])){ if(!Number.isFinite(Number(u.balance))) u.balance=0; }
+  fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));
+  persistAuthStoreToDB(store).catch(err=>console.error('[BDRIS] PostgreSQL save failed:',err.message));
+}
+let authStore=loadAuthStore();
 for(const u of (authStore.users||[])){ if(!Number.isFinite(Number(u.balance))) u.balance=0; }
-saveAuthStore(authStore);
 const authSessions=new Map();
+
+/* POSTGRESQL PERSISTENCE: DATABASE_URL when configured; JSON remains fallback. */
+const dbPool = process.env.DATABASE_URL ? new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
+  max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000
+}) : null;
+let dbReady=false;
+async function initAuthDatabase(){
+  if(!dbPool){
+    console.log('[BDRIS] PostgreSQL persistence: DATABASE_URL not configured; LOCAL JSON FALLBACK');
+    return false;
+  }
+  try{
+    await dbPool.query(`CREATE TABLE IF NOT EXISTS bdris_auth_store (id INTEGER PRIMARY KEY CHECK (id=1), payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    const result=await dbPool.query('SELECT payload FROM bdris_auth_store WHERE id=1 LIMIT 1');
+    if(result.rows.length && result.rows[0].payload){
+      const remote=result.rows[0].payload;
+      if(Array.isArray(remote.users)){
+        authStore=remote;
+        for(const u of authStore.users){ if(!Number.isFinite(Number(u.balance))) u.balance=0; }
+        fs.writeFileSync(AUTH_FILE,JSON.stringify(authStore,null,2));
+        console.log(`[BDRIS] PostgreSQL persistence: CONNECTED (${authStore.users.length} users restored)`);
+      }
+    }else{
+      await dbPool.query('INSERT INTO bdris_auth_store (id,payload,updated_at) VALUES (1,$1,NOW())',[JSON.stringify(authStore)]);
+      console.log(`[BDRIS] PostgreSQL persistence: CONNECTED (${authStore.users.length} users migrated from local JSON)`);
+    }
+    dbReady=true;
+    return true;
+  }catch(err){
+    console.error('[BDRIS] PostgreSQL persistence unavailable; using LOCAL JSON FALLBACK:',err.message);
+    return false;
+  }
+}
+async function persistAuthStoreToDB(store){
+  if(!dbPool || !dbReady) return;
+  await dbPool.query(`INSERT INTO bdris_auth_store (id,payload,updated_at) VALUES (1,$1,NOW()) ON CONFLICT (id) DO UPDATE SET payload=EXCLUDED.payload, updated_at=NOW()`,[JSON.stringify(store)]);
+}
+
 
 // Bangladesh administrative Geo JSON fallback for Union offices.
 // The BDRIS result page sometimes leaves the Upazila/District portion blank.
@@ -1639,36 +1683,20 @@ app.get('/', (req, res) => {
    SERVER
 ========================================================= */
 
-const port =
-    process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
-
-app.listen(
-    port,
-    '0.0.0.0',
-    () => {
-
+async function startServer(){
+    await initAuthDatabase();
+    app.listen(port,'0.0.0.0',()=>{
         console.log('');
-        console.log(
-            '=========================================='
-        );
-        console.log(
-            '🚀 BDRIS SMART AUTO FILL READY'
-        );
-        console.log(
-            '=========================================='
-        );
-        console.log(
-            `🌐 Local: http://localhost:${port}`
-        );
+        console.log('==========================================');
+        console.log('🚀 BDRIS SMART AUTO FILL READY');
+        console.log('==========================================');
+        console.log(`🌐 Local: http://localhost:${port}`);
         console.log(`📱 Same-device: http://127.0.0.1:${port}`);
         console.log('ℹ️ If running on a PC, open the PC LAN IP from the phone.');
         console.log('');
-        // Warm Chrome in the background after startup so the first Preview does not
-        // pay the full browser-launch cost. Fail silently; the normal lazy path remains.
-        setTimeout(() => {
-            getSharedBrowser().catch(() => {});
-        }, 2500);
-
-    }
-);
+        setTimeout(()=>{getSharedBrowser().catch(()=>{});},2500);
+    });
+}
+startServer().catch(err=>{console.error('[BDRIS] Server startup failed:',err);process.exit(1);});

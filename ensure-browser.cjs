@@ -18,7 +18,19 @@ if (found) {
   process.exit(0);
 }
 if (process.argv.includes('--install-only')) {
-  console.log('[BDRIS] No system Chrome found. Puppeteer managed Chrome will be used.');
-  process.exit(0);
+  console.log('[BDRIS] No system Chrome found. Installing Puppeteer managed Chrome...');
+  try {
+    process.env.PUPPETEER_CACHE_DIR = path.join(root, '.cache', 'puppeteer');
+    execFileSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['puppeteer', 'browsers', 'install', 'chrome'], {
+      cwd: root,
+      env: { ...process.env, PUPPETEER_CACHE_DIR: process.env.PUPPETEER_CACHE_DIR },
+      stdio: 'inherit'
+    });
+    console.log('[BDRIS] Managed Chrome installation completed.');
+    process.exit(0);
+  } catch (e) {
+    console.error('[BDRIS] Managed Chrome installation failed:', e.message);
+    process.exit(1);
+  }
 }
 console.log('[BDRIS] No system Chrome found. Puppeteer will resolve its managed browser.');
