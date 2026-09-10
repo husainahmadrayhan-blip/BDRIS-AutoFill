@@ -32,20 +32,184 @@ app.get('/fonts/:file', (req, res) => {
 });
 
 const sessions = new Map();
+let pgPool = null;
+let pgReady = false;
+let pgSyncTimer = null;
+let pgSyncInFlight = false;
+
 
 const AUTH_DIR = path.join(__dirname, '.private');
 const AUTH_FILE = path.join(AUTH_DIR, 'users.json');
 fs.mkdirSync(AUTH_DIR, { recursive: true });
 function hashPassword(password){return crypto.createHash('sha256').update(String(password)).digest('hex');}
 function authSecret(){return crypto.createHash('sha256').update(String(process.env.AUTH_SECRET||process.env.ADMIN_PASSWORD||'BDRIS-AUTO-FILL-AUTH-SECRET')).digest();}
-function sealUserPayload(user){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',authSecret(),iv);const plain=Buffer.from(JSON.stringify({id:user.id,username:user.username,name:user.name||'',passwordHash:user.passwordHash,accessToken:user.accessToken,enabled:user.enabled!==false,createdAt:user.createdAt||Date.now(),balance:Number(user.balance)||0}),'utf8');const enc=Buffer.concat([cipher.update(plain),cipher.final()]);const tag=cipher.getAuthTag();return Buffer.concat([iv,tag,enc]).toString('base64url');}
+function sealUserPayload(user){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',authSecret(),iv);const plain=Buffer.from(JSON.stringify({id:user.id,username:user.username,name:user.name||'',passwordHash:user.passwordHash,accessToken:user.accessToken,enabled:user.enabled!==false,createdAt:user.createdAt||Date.now(),balance:Number(user.balance)||0,role:user.role||'customer',parentId:user.parentId||'',rate:Number(user.rate)||0}),'utf8');const enc=Buffer.concat([cipher.update(plain),cipher.final()]);const tag=cipher.getAuthTag();return Buffer.concat([iv,tag,enc]).toString('base64url');}
 function openUserPayload(value){try{const b=Buffer.from(String(value||''),'base64url');if(b.length<28)return null;const decipher=crypto.createDecipheriv('aes-256-gcm',authSecret(),b.subarray(0,12));decipher.setAuthTag(b.subarray(12,28));return JSON.parse(Buffer.concat([decipher.update(b.subarray(28)),decipher.final()]).toString('utf8'));}catch(_){return null;}}
 function loadAuthStore(){try{return JSON.parse(fs.readFileSync(AUTH_FILE,'utf8'));}catch(_){const store={users:[],admin:{username:process.env.ADMIN_USERNAME||'admin',passwordHash:hashPassword(process.env.ADMIN_PASSWORD||'change-this-admin-password')}};fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));return store;}}
-function saveAuthStore(store){fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));}
+function saveAuthStore(store){fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2)); queuePgSync();}
 const authStore=loadAuthStore();
 for(const u of (authStore.users||[])){ if(!Number.isFinite(Number(u.balance))) u.balance=0; }
 saveAuthStore(authStore);
 const authSessions=new Map();
+// Persistent metadata stores. These are intentionally lightweight JSON stores so the
+// app keeps working on Render Free without requiring a paid database service.
+const DATA_DIR = path.join(__dirname, 'data');
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const TX_FILE = path.join(DATA_DIR, 'transactions.json');
+const CERT_FILE = path.join(DATA_DIR, 'certificates.json');
+function loadJsonFile(file, fallback){ try { const v=JSON.parse(fs.readFileSync(file,'utf8')); return v ?? fallback; } catch(_) { return fallback; } }
+function saveJsonFile(file, value){ fs.writeFileSync(file, JSON.stringify(value,null,2)); queuePgSync(); }
+let transactionStore = loadJsonFile(TX_FILE, {transactions:[]});
+let certificateStore = loadJsonFile(CERT_FILE, {certificates:[]});
+if(!Array.isArray(transactionStore.transactions)) transactionStore={transactions:[]};
+if(!Array.isArray(certificateStore.certificates)) certificateStore={certificates:[]};
+
+
+// PostgreSQL persistence for production/Render. JSON remains a local fallback.
+async function initPostgres(){
+  if(!process.env.DATABASE_URL) return;
+  try{
+    const {Pool}=require('pg');
+    pgPool=new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false},max:5,idleTimeoutMillis:30000});
+    await pgPool.query(`CREATE TABLE IF NOT EXISTS bdris_users (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW());
+      CREATE TABLE IF NOT EXISTS bdris_transactions (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW());
+      CREATE TABLE IF NOT EXISTS bdris_certificates (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW());`);
+    const uc=(await pgPool.query('SELECT COUNT(*)::int AS c FROM bdris_users')).rows[0].c;
+    if(uc===0 && authStore.users.length){
+      for(const u of authStore.users) await pgPool.query('INSERT INTO bdris_users(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(u.id),u]);
+    } else if(uc>0){
+      const rows=(await pgPool.query('SELECT data FROM bdris_users')).rows; authStore.users=rows.map(r=>r.data||{}); saveAuthStoreLocalOnly(authStore);
+    }
+    const tc=(await pgPool.query('SELECT COUNT(*)::int AS c FROM bdris_transactions')).rows[0].c;
+    if(tc===0 && transactionStore.transactions.length){ for(const t of transactionStore.transactions) await pgPool.query('INSERT INTO bdris_transactions(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(t.id),t]); }
+    else if(tc>0){ transactionStore.transactions=(await pgPool.query('SELECT data FROM bdris_transactions')).rows.map(r=>r.data||{}); saveJsonFileLocalOnly(TX_FILE,transactionStore); }
+    const cc=(await pgPool.query('SELECT COUNT(*)::int AS c FROM bdris_certificates')).rows[0].c;
+    if(cc===0 && certificateStore.certificates.length){ for(const c of certificateStore.certificates) await pgPool.query('INSERT INTO bdris_certificates(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(c.id),c]); }
+    else if(cc>0){ certificateStore.certificates=(await pgPool.query('SELECT data FROM bdris_certificates')).rows.map(r=>r.data||{}); saveJsonFileLocalOnly(CERT_FILE,certificateStore); }
+    pgReady=true; console.log('🐘 PostgreSQL persistence: READY');
+  }catch(e){ console.warn('⚠️ PostgreSQL unavailable; using local JSON fallback:',e.message); pgPool=null; }
+}
+function saveAuthStoreLocalOnly(store){try{fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));}catch(_) {}}
+function saveJsonFileLocalOnly(file,value){try{fs.writeFileSync(file,JSON.stringify(value,null,2));}catch(_) {}}
+async function syncPostgres(){
+  if(!pgPool||!pgReady||pgSyncInFlight)return;
+  pgSyncInFlight=true;
+  try{
+    await pgPool.query('BEGIN');
+    for(const u of authStore.users||[]) await pgPool.query('INSERT INTO bdris_users(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(u.id),u]);
+    for(const t of transactionStore.transactions||[]) await pgPool.query('INSERT INTO bdris_transactions(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(t.id),t]);
+    for(const c of certificateStore.certificates||[]) await pgPool.query('INSERT INTO bdris_certificates(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(c.id),c]);
+    if((authStore.users||[]).length) await pgPool.query('DELETE FROM bdris_users WHERE NOT (id = ANY($1::text[]))',[(authStore.users||[]).map(u=>String(u.id))]);
+    if((transactionStore.transactions||[]).length) await pgPool.query('DELETE FROM bdris_transactions WHERE NOT (id = ANY($1::text[]))',[(transactionStore.transactions||[]).map(t=>String(t.id))]);
+    if((certificateStore.certificates||[]).length) await pgPool.query('DELETE FROM bdris_certificates WHERE NOT (id = ANY($1::text[]))',[(certificateStore.certificates||[]).map(c=>String(c.id))]);
+    await pgPool.query('COMMIT');
+  }catch(e){try{await pgPool.query('ROLLBACK')}catch(_){} console.warn('PostgreSQL sync failed:',e.message)} finally{pgSyncInFlight=false;}
+}
+function queuePgSync(){ if(!pgReady)return; clearTimeout(pgSyncTimer); pgSyncTimer=setTimeout(()=>syncPostgres().catch(()=>{}),120); }
+const requestRate = new Map();
+function rateLimit(key, max=40, windowMs=60000){
+  const now=Date.now(); const item=requestRate.get(key);
+  if(!item || now-item.started>windowMs){ requestRate.set(key,{started:now,count:1}); return true; }
+  item.count++; return item.count<=max;
+}
+function requireRateLimit(req,res,next){ const key=(req.auth?.userId||req.ip||'unknown')+':'+req.path; if(!rateLimit(key,60,60000)) return res.status(429).json({ok:false,error:'Too many requests. Please try again shortly.'}); next(); }
+// Bangladesh administrative Geo JSON fallback for Union offices.
+// The BDRIS result page sometimes leaves the Upazila/District portion blank.
+// In that case we resolve the Union -> Upazila -> District hierarchy from a
+// cached bilingual Bangladesh geo dataset. The cache is refreshed only when
+// needed, so normal Auto Fill remains fast.
+const BD_GEO_URL = 'https://iqbalhasandev.github.io/bangladesh-geo-json/bangladesh-geo.json';
+const BD_GEO_CACHE = path.join(__dirname, 'data', 'bangladesh-geo.json');
+let bdGeoMemory = null;
+let bdGeoLoading = null;
+function geoNorm(value){
+  return String(value ?? '').toLowerCase().normalize('NFKC').replace(/[\u200c\u200d]/g,'').replace(/[^a-z0-9\u0980-\u09ff]+/g,'');
+}
+function geoClean(value){ return String(value ?? '').replace(/\s+/g,' ').trim(); }
+async function loadBangladeshGeo(){
+  if (Array.isArray(bdGeoMemory)) return bdGeoMemory;
+  if (bdGeoLoading) return bdGeoLoading;
+  bdGeoLoading = (async()=>{
+    try {
+      if (fs.existsSync(BD_GEO_CACHE)) {
+        const cached = JSON.parse(fs.readFileSync(BD_GEO_CACHE,'utf8'));
+        if (Array.isArray(cached) && cached.length) {
+          bdGeoMemory = cached;
+          return cached;
+        }
+      }
+    } catch (_) {}
+    try {
+      if (typeof fetch !== 'function') return [];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      try {
+        const r = await fetch(BD_GEO_URL, { headers:{'Accept':'application/json'}, signal:controller.signal });
+        if (!r.ok) throw new Error(`Geo data HTTP ${r.status}`);
+        const data = await r.json();
+        if (!Array.isArray(data) || !data.length) throw new Error('Geo data empty');
+        fs.mkdirSync(path.dirname(BD_GEO_CACHE), {recursive:true});
+        fs.writeFileSync(BD_GEO_CACHE, JSON.stringify(data), 'utf8');
+        bdGeoMemory = data;
+        return data;
+      } finally { clearTimeout(timer); }
+    } catch (_) {
+      return [];
+    }
+  })().finally(()=>{bdGeoLoading=null;});
+  return bdGeoLoading;
+}
+async function resolveUnionGeo(unionValue){
+  const wanted = geoNorm(String(unionValue || '').replace(/\bunion\s+parishad\b/ig,'').replace(/\bunion\b/ig,'').replace(/ইউনিয়ন\s*পরিষদ|ইউনিয়ন\s*পরিষদ|ইউনিয়ন|ইউনিয়ন/gi,''));
+  if (!wanted) return null;
+  const tree = await loadBangladeshGeo();
+  if (!Array.isArray(tree)) return null;
+  let best = null;
+  for (const div of tree) {
+    for (const district of (div?.districts || [])) {
+      for (const upazila of (district?.upazilas || [])) {
+        for (const u of (upazila?.unions || [])) {
+          const n = geoNorm(u?.name);
+          const bn = geoNorm(u?.bn_name);
+          if (wanted === n || wanted === bn) return {union:u, upazila, district, division:div};
+          if (!best && ((n && (n.includes(wanted) || wanted.includes(n))) || (bn && (bn.includes(wanted) || wanted.includes(bn))))) {
+            best = {union:u, upazila, district, division:div};
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+async function applyUnionGeoFallback(data){
+  if (!data || typeof data !== 'object') return data;
+  const office = geoClean(data.registrationOffice);
+  const fields = Array.isArray(data.allFields) ? data.allFields : [];
+  const isUnion = /union\s*(parishad)?|ইউনিয়ন|ইউনিয়ন/i.test(office) || fields.some(r => /union|ইউনিয়ন|ইউনিয়ন/i.test(`${r?.label||''} ${r?.englishLabel||''}`));
+  if (!isUnion) return data;
+
+  let unionName = '';
+  const unionRow = fields.find(r => /^(union|ইউনিয়ন|ইউনিয়ন)$/i.test(geoClean(r?.englishLabel || r?.label)) || /^(ইউনিয়ন|ইউনিয়ন)$/i.test(geoClean(r?.label)));
+  if (unionRow) unionName = geoClean(unionRow.englishValue || unionRow.value);
+  if (!unionName) unionName = office;
+  const hit = await resolveUnionGeo(unionName);
+  if (!hit) return data;
+
+  const upEn = geoClean(hit.upazila?.name);
+  const distEn = geoClean(hit.district?.name);
+  const current = geoClean(data.upazilaPouroshavaUnion);
+  const currentNorm = geoNorm(current);
+  const pieces = [];
+  if (upEn && !currentNorm.includes(geoNorm(upEn))) pieces.push(upEn);
+  if (distEn && !currentNorm.includes(geoNorm(distEn))) pieces.push(distEn);
+  // Only fill what is missing. Never overwrite an already populated value.
+  if (!current && (upEn || distEn)) data.upazilaPouroshavaUnion = [upEn, distEn].filter(Boolean).join(' ');
+  else if (pieces.length) data.upazilaPouroshavaUnion = [current, ...pieces].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  data.geoResolved = {source:'bangladesh-geo-json', union:geoClean(hit.union?.name || hit.union?.bn_name), upazila:upEn, district:distEn};
+  return data;
+}
+
+
 app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now()}));
 app.get('/api/runtime/browser',(req,res)=>res.json({ok:true,cacheDir:process.env.PUPPETEER_CACHE_DIR,serviceDir:__dirname,node:process.version}));
 
@@ -74,10 +238,45 @@ for(const name of DEFAULT_PDF_IMAGE_NAMES){
 }
 if(changedDefaultImages) savePDFImageLibrary(pdfImageStore);
 function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
+// Lightweight Server-Sent Events (SSE) channel for PDF Image Library changes.
+// The client uses this instead of repeatedly polling when the connection is healthy.
+const pdfImageSSEClients = new Set();
+function broadcastPDFImageLibraryChanged(reason='updated') {
+  const payload = JSON.stringify({type:'pdf-image-library-changed', reason, at:Date.now()});
+  for (const client of pdfImageSSEClients) {
+    try { client.res.write(`event: pdf-image-library-changed\ndata: ${payload}\n\n`); }
+    catch (_) { pdfImageSSEClients.delete(client); try { client.res.end(); } catch (_) {} }
+  }
+}
+function closePDFImageSSEClient(client){
+  if (!client) return;
+  pdfImageSSEClients.delete(client);
+  try { clearInterval(client.heartbeat); } catch (_) {}
+}
+app.get('/api/pdf-images/events', (req,res)=>{
+  res.status(200);
+  res.set({
+    'Content-Type':'text/event-stream; charset=utf-8',
+    'Cache-Control':'no-cache, no-transform',
+    'Connection':'keep-alive',
+    'X-Accel-Buffering':'no'
+  });
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+  res.write(`retry: 5000\n\n`);
+  const client={res,heartbeat:null};
+  client.heartbeat=setInterval(()=>{
+    try { res.write(`: heartbeat ${Date.now()}\n\n`); }
+    catch (_) { closePDFImageSSEClient(client); }
+  }, 25000);
+  pdfImageSSEClients.add(client);
+  req.on('close',()=>closePDFImageSSEClient(client));
+});
+
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
-app.post('/api/auth/login',(req,res)=>{const {username,password,accessToken,deviceId,userId,auth}=req.body||{};if(!username||!password||!accessToken||!deviceId)return res.status(400).json({ok:false,error:'Username, password, access link এবং device তথ্য প্রয়োজন।'});let user=authStore.users.find(u=>u.accessToken===accessToken);if(!user&&userId)user=authStore.users.find(u=>u.id===String(userId));if(auth){const r=openUserPayload(auth);if(r&&r.accessToken===accessToken&&r.id===String(userId||r.id)&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){const stored=authStore.users.find(u=>u.id===r.id);user={...(stored||{}),...r,deviceId:stored?.deviceId||'',lastLoginAt:stored?.lastLoginAt||null,balance:Number(r.balance)||0};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}if(!user||!user.enabled)return res.status(403).json({ok:false,error:'এই access link সক্রিয় নেই।'});if(user.username!==username||user.passwordHash!==hashPassword(password))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই access link অন্য একটি device-এর সাথে যুক্ত আছে।'});if(!user.deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken,createdAt:Date.now()});res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});});
+app.post('/api/auth/login',(req,res)=>{const {username,password,accessToken,deviceId,userId,auth}=req.body||{};if(!username||!password||!deviceId)return res.status(400).json({ok:false,error:'Username, password এবং device তথ্য প্রয়োজন।'});let user=null;if(accessToken)user=authStore.users.find(u=>u.accessToken===accessToken);if(!user&&userId)user=authStore.users.find(u=>u.id===String(userId));if(!user&&auth&&accessToken){const r=openUserPayload(auth);if(r&&r.accessToken===accessToken&&r.id===String(userId||r.id)&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){user={...r,deviceId:'',lastLoginAt:null,balance:Number(r.balance)||0};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}if(!user&&!accessToken)user=authStore.users.find(u=>u.username===username);if(!user||!user.enabled)return res.status(403).json({ok:false,error:'এই user account সক্রিয় নেই।'});if(user.username!==username||user.passwordHash!==hashPassword(password))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই user অন্য একটি device-এর সাথে যুক্ত আছে।'});if(!user.deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();const sessionAccessToken=accessToken||user.accessToken||'';authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken:sessionAccessToken,createdAt:Date.now()});res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});});
 app.post('/api/auth/admin-login',(req,res)=>{const {username,password}=req.body||{};if(username!==authStore.admin.username||hashPassword(password||'')!==authStore.admin.passwordHash)return res.status(401).json({ok:false,error:'Admin username বা password ভুল।'});const token=newToken();authSessions.set(token,{kind:'admin',username,createdAt:Date.now()});res.json({ok:true,token});});
+app.post('/api/auth/subadmin-login',(req,res)=>{const {username,password,deviceId}=req.body||{};const user=authStore.users.find(u=>u.username===username&&u.role==='subadmin');if(!user||!user.enabled)return res.status(403).json({ok:false,error:'Sub Admin account সক্রিয় নেই।'});if(user.passwordHash!==hashPassword(password||''))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই Sub Admin অন্য device-এর সাথে যুক্ত আছে।'});if(!user.deviceId&&deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();authSessions.set(token,{kind:'subadmin',userId:user.id,username:user.username,name:user.name||'',createdAt:Date.now()});res.json({ok:true,token,user:{id:user.id,username:user.username,name:user.name||''},baseRate:Number(process.env.BASE_RATE||4)});});
 function requireAuth(req,res,next){const session=authUser(req);if(!session)return res.status(401).json({ok:false,error:'Login required.'});req.auth=session;next();}
 function requireAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='admin')return res.status(403).json({ok:false,error:'Admin access required.'});req.auth=session;next();}
 app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth}));app.get('/api/balance',requireAuth,(req,res)=>{
@@ -86,21 +285,83 @@ app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth
   if(!Number.isFinite(Number(user.balance))) user.balance=0;
   res.json({ok:true,balance:Number(user.balance),auth:sealUserPayload(user)});
 });
-app.post('/api/balance/charge',requireAuth,(req,res)=>{
+app.post('/api/balance/charge',requireAuth,requireRateLimit,async (req,res)=>{
   const user=authStore.users.find(u=>u.id===req.auth.userId);
   if(!user) return res.status(404).json({ok:false,error:'User not found.'});
-  const amount=4;
+  const baseRate=Number(process.env.BASE_RATE||4);
+  const amount=Math.max(baseRate, Number(user.rate)||baseRate);
+  const certificateId=String(req.body?.certificateId||'').trim();
+  if(!certificateId) return res.status(400).json({ok:false,error:'Certificate ID required.'});
+  const existing=transactionStore.transactions.find(t=>t.userId===user.id && t.certificateId===certificateId && t.type==='certificate_preview');
+  if(existing){ return res.json({ok:true,balance:Number(user.balance)||0,charged:0,alreadyCharged:true,transactionId:existing.id,auth:sealUserPayload(user)}); }
   user.balance=Number(user.balance)||0;
   if(user.balance < amount) return res.status(402).json({ok:false,error:'Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳4।',balance:user.balance,required:amount});
   user.balance=Math.round((user.balance-amount)*100)/100;
-  saveAuthStore(authStore);
-  res.json({ok:true,balance:user.balance,charged:amount,auth:sealUserPayload(user)});
+  const tx={id:newToken(),type:'certificate_preview',userId:user.id,certificateId,amount,baseRate,commission:Math.max(0,amount-baseRate),createdAt:Date.now(),balanceAfter:user.balance};
+  transactionStore.transactions.push(tx);
+  saveAuthStore(authStore); saveJsonFile(TX_FILE,transactionStore);
+  await syncPostgres();
+  res.json({ok:true,balance:user.balance,charged:amount,alreadyCharged:false,transactionId:tx.id,auth:sealUserPayload(user)});
 });
 
+app.post('/api/certificates',requireAuth,requireRateLimit,async (req,res)=>{
+  const user=authStore.users.find(u=>u.id===req.auth.userId);
+  if(!user) return res.status(404).json({ok:false,error:'User not found.'});
+  const b=req.body||{}; const id=String(b.certificateId||'').trim();
+  if(!id) return res.status(400).json({ok:false,error:'Certificate ID required.'});
+  const existing=certificateStore.certificates.find(x=>x.id===id && x.userId===user.id);
+  const record={
+    id,userId:user.id,username:user.username,userName:user.name||'',registrationMode:b.registrationMode==='death'?'death':'birth',
+    customerNameBn:String(b.customerNameBn||''),customerNameEn:String(b.customerNameEn||''),brn:String(b.brn||''),dob:String(b.dob||''),status:String(b.status||'success'),
+    templateKey:String(b.templateKey||''),createdAt:existing?.createdAt||Date.now(),updatedAt:Date.now()
+  };
+  if(existing) Object.assign(existing,record); else certificateStore.certificates.push(record);
+  saveJsonFile(CERT_FILE,certificateStore);
+  await syncPostgres();
+  res.json({ok:true,certificate:record});
+});
+
+function requireSubAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='subadmin')return res.status(403).json({ok:false,error:'Sub Admin access required.'});req.auth=session;next();}
+app.get('/api/subadmin/me',requireSubAdmin,(req,res)=>{const u=authStore.users.find(x=>x.id===req.auth.userId);res.json({ok:true,user:u?{id:u.id,username:u.username,name:u.name||'',rate:Number(u.rate||process.env.BASE_RATE||4)}:null,baseRate:Number(process.env.BASE_RATE||4)});});
+app.get('/api/subadmin/customers',requireSubAdmin,(req,res)=>{res.json({ok:true,customers:authStore.users.filter(u=>u.role==='customer'&&u.parentId===req.auth.userId).map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})});});
+app.post('/api/subadmin/customers',requireSubAdmin,requireRateLimit,(req,res)=>{const parent=authStore.users.find(u=>u.id===req.auth.userId&&u.role==='subadmin');if(!parent)return res.status(404).json({ok:false,error:'Sub Admin not found.'});const {username,password,name='',rate}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const base=Number(process.env.BASE_RATE||4);const r=Number.isFinite(Number(rate))?Math.max(base,Number(rate)):Math.max(base,Number(parent.rate)||base);const user={id:newToken().slice(0,16),username:String(username),name:String(name),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,role:'customer',parentId:parent.id,rate:r};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
+app.patch('/api/subadmin/customers/:id',requireSubAdmin,requireRateLimit,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id&&u.role==='customer'&&u.parentId===req.auth.userId);if(!user)return res.status(404).json({ok:false,error:'Customer not found.'});const base=Number(process.env.BASE_RATE||4);if(req.body.setRate!==undefined){const n=Number(req.body.setRate);if(!Number.isFinite(n)||n<base)return res.status(400).json({ok:false,error:'Rate cannot be below base rate.'});user.rate=n;}if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=n;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe});});
+app.get('/api/admin/stats',requireAdmin,(req,res)=>{
+  const users=authStore.users||[], today=new Date(); today.setHours(0,0,0,0);
+  const certs=certificateStore.certificates||[]; const txs=transactionStore.transactions||[];
+  const todayTx=txs.filter(t=>t.createdAt>=today.getTime());
+  const stats={users:users.length,active:users.filter(u=>u.enabled!==false).length,pdfToday:todayTx.length,birth:todayTx.filter(t=>certs.find(c=>c.id===t.certificateId)?.registrationMode==='birth').length,death:todayTx.filter(t=>certs.find(c=>c.id===t.certificateId)?.registrationMode==='death').length,balance:users.reduce((a,u)=>a+(Number(u.balance)||0),0),transactions:txs.length,certificates:certs.length};
+  res.json({ok:true,stats});
+});
+app.get('/api/admin/transactions',requireAdmin,(req,res)=>{res.json({ok:true,transactions:(transactionStore.transactions||[]).slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});});
+app.get('/api/admin/certificates',requireAdmin,(req,res)=>{const q=String(req.query.q||'').toLowerCase().trim();let rows=certificateStore.certificates||[];if(q)rows=rows.filter(c=>[c.userName,c.username,c.customerNameBn,c.customerNameEn,c.brn,c.dob].some(v=>String(v||'').toLowerCase().includes(q)));res.json({ok:true,certificates:rows.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});});
+
+
 app.get('/api/admin/users',requireAdmin,(req,res)=>res.json({ok:true,users:authStore.users.map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})}));
-app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
-app.patch('/api/admin/users/:id',requireAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;safe.auth=sealUserPayload(user);res.json({ok:true,user:safe});});
-app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);res.json({ok:true});});
+app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,role:'customer',parentId:'',rate:Number(process.env.BASE_RATE||4)};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
+
+app.post('/api/admin/subadmins',requireAdmin,requireRateLimit,(req,res)=>{
+  const {username,password,name='',rate}=req.body||{}; if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});
+  if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});
+  const baseRate=Number(process.env.BASE_RATE||4); const r=Number.isFinite(Number(rate))?Math.max(baseRate,Number(rate)):baseRate;
+  const user={id:newToken().slice(0,16),username:String(username),name:String(name),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,role:'subadmin',parentId:'',rate:r};
+  authStore.users.push(user); saveAuthStore(authStore); const {passwordHash,...safe}=user; res.json({ok:true,user:safe});
+});
+app.post('/api/admin/subadmins/:id/customers',requireAdmin,requireRateLimit,(req,res)=>{
+  const parent=authStore.users.find(u=>u.id===req.params.id&&u.role==='subadmin'); if(!parent)return res.status(404).json({ok:false,error:'Sub Admin not found.'});
+  const {username,password,name='',rate}=req.body||{}; if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});
+  if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});
+  const baseRate=Number(process.env.BASE_RATE||4); const r=Number.isFinite(Number(rate))?Math.max(baseRate,Number(rate)):Math.max(baseRate,Number(parent.rate)||baseRate);
+  const user={id:newToken().slice(0,16),username:String(username),name:String(name),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,role:'customer',parentId:parent.id,rate:r};
+  authStore.users.push(user); saveAuthStore(authStore); const {passwordHash,...safe}=user; res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});
+});
+app.get('/api/admin/commissions',requireAdmin,(req,res)=>{
+  const base=Number(process.env.BASE_RATE||4); const subs=(authStore.users||[]).filter(u=>u.role==='subadmin');
+  const rows=subs.map(s=>{const tx=(transactionStore.transactions||[]).filter(t=>t.userId&&((authStore.users.find(u=>u.id===t.userId)?.parentId)===s.id));const commission=tx.reduce((a,t)=>a+Math.max(0,Number(t.amount||0)-base),0);return {id:s.id,username:s.username,name:s.name||'',customers:authStore.users.filter(u=>u.parentId===s.id).length,commission};});
+  res.json({ok:true,baseRate:base,subadmins:rows});
+});
+app.patch('/api/admin/users/:id',requireAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);if(req.body.setRate!==undefined){const base=Number(process.env.BASE_RATE||4),n=Number(req.body.setRate);if(!Number.isFinite(n)||n<base)return res.status(400).json({ok:false,error:'Rate cannot be below base rate.'});user.rate=n;}if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;safe.auth=sealUserPayload(user);res.json({ok:true,user:safe});});
+app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);if(pgPool&&pgReady)pgPool.query('DELETE FROM bdris_users WHERE id=$1',[String(req.params.id)]).catch(()=>{});res.json({ok:true});});
 app.use('/api',(req,res,next)=>{if(req.path.startsWith('/auth/'))return next();return requireAuth(req,res,next);});
 
 
@@ -125,7 +386,7 @@ app.post('/api/pdf-images', (req,res)=>{
     image={id:crypto.randomBytes(12).toString('hex'),name:cleanName,fileName:'',mimeType:'',createdAt:Date.now(),updatedAt:Date.now()};
     store.images.push(image);
   }
-  if(!dataUrl){ savePDFImageLibrary(store); return res.json({ok:true,image:pdfImageMeta(image),needsUpload:!image.fileName}); }
+  if(!dataUrl){ savePDFImageLibrary(store); broadcastPDFImageLibraryChanged(image.fileName ? 'image-selected' : 'image-created'); return res.json({ok:true,image:pdfImageMeta(image),needsUpload:!image.fileName}); }
   const match=String(dataUrl).match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i);
   if(!match) return res.status(400).json({ok:false,error:'শুধু PNG, JPG/JPEG অথবা WEBP image upload করা যাবে।'});
   const mime=match[1].toLowerCase()==='image/jpg'?'image/jpeg':match[1].toLowerCase();
@@ -137,6 +398,7 @@ app.post('/api/pdf-images', (req,res)=>{
   fs.writeFileSync(path.join(PDF_IMAGE_DIR,fileName),buffer);
   image.fileName=fileName; image.mimeType=mime; image.updatedAt=Date.now();
   savePDFImageLibrary(store);
+  broadcastPDFImageLibraryChanged('image-saved');
   res.json({ok:true,image:pdfImageMeta(image)});
 });
 
@@ -150,7 +412,20 @@ app.patch('/api/pdf-images/:id', (req,res)=>{
   if(duplicate) return res.status(409).json({ok:false,error:'এই নামে আরেকটি Image আগে থেকেই আছে।'});
   image.name=requested; image.updatedAt=Date.now();
   savePDFImageLibrary(store);
+  broadcastPDFImageLibraryChanged('image-renamed');
   res.json({ok:true,image:pdfImageMeta(image)});
+});
+
+app.delete('/api/pdf-images/:id', (req,res)=>{
+  let store=loadPDFImageLibrary();
+  const i=store.images.findIndex(x=>x.id===req.params.id);
+  if(i<0) return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
+  const image=store.images[i];
+  for(const ext of ['png','jpg','webp']){ try{ fs.unlinkSync(path.join(PDF_IMAGE_DIR,image.id+'.'+ext)); }catch(_){} }
+  store.images.splice(i,1);
+  savePDFImageLibrary(store);
+  broadcastPDFImageLibraryChanged('image-deleted');
+  res.json({ok:true,id:image.id});
 });
 
 app.get('/api/pdf-images/:id', (req,res)=>{
@@ -179,42 +454,33 @@ const browserLaunchOptions = {
 // Resolve it before passing it to launch(), otherwise Chromium receives
 // "[object Promise]" as the executable path.
 async function launchBrowser() {
-    // Keep Puppeteer's cache fixed to the application directory so the build-time
-    // Chrome installation and runtime lookup always use the same location.
     const cacheDir = path.join(__dirname, '.cache', 'puppeteer');
     process.env.PUPPETEER_CACHE_DIR = cacheDir;
-
-    let executablePath = null;
-    try {
-        executablePath = await puppeteer.executablePath();
-    } catch (_) {
-        executablePath = null;
-    }
-
-    // If Render skipped the postinstall step or the cache was cleared, install
-    // the exact browser revision on first use, then resolve the path again.
-    if (!executablePath || typeof executablePath !== 'string' || !fs.existsSync(executablePath)) {
-        const { execFileSync } = require('child_process');
+    const candidates = [
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+        process.env.CHROME_PATH,
+        process.env.CHROMIUM_PATH,
+        process.platform === 'win32' ? path.join(process.env.PROGRAMFILES || 'C:\\Program Files','Google','Chrome','Application','chrome.exe') : null,
+        process.platform === 'win32' ? path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)','Google','Chrome','Application','chrome.exe') : null,
+        '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'
+    ].filter(Boolean);
+    let executablePath = candidates.find(p => typeof p === 'string' && fs.existsSync(p)) || null;
+    if (!executablePath) {
         try {
-            execFileSync('npx', ['puppeteer', 'browsers', 'install', 'chrome'], {
-                cwd: __dirname,
-                env: { ...process.env, PUPPETEER_CACHE_DIR: cacheDir },
-                stdio: 'inherit'
-            });
-            executablePath = await puppeteer.executablePath();
-        } catch (installError) {
-            throw new Error('Chrome install failed: ' + (installError?.message || installError));
-        }
+            const resolved = await puppeteer.executablePath();
+            if (typeof resolved === 'string' && resolved && fs.existsSync(resolved)) executablePath = resolved;
+        } catch (_) {}
     }
-
     const options = { ...browserLaunchOptions };
-    if (executablePath && typeof executablePath === 'string' && fs.existsSync(executablePath)) {
-        options.executablePath = executablePath;
-    } else {
-        throw new Error('Chrome executable not found after installation.');
+    if (executablePath) options.executablePath = executablePath;
+    try {
+        return await puppeteer.launch(options);
+    } catch (firstError) {
+        if (executablePath) {
+            try { return await puppeteer.launch({ ...browserLaunchOptions }); } catch (_) {}
+        }
+        throw new Error('Chrome/Chromium could not be started. Install Chrome or run `npx puppeteer browsers install chrome`. Original error: ' + (firstError?.message || firstError));
     }
-
-    return puppeteer.launch(options);
 }
 
 async function findFirst(page, selectors, timeout = 10000) {
@@ -240,29 +506,29 @@ async function findFirst(page, selectors, timeout = 10000) {
     }
 }
 
-let sharedBDRISBrowser = null;
-let sharedPDFBrowser = null;
-async function getSharedPDFBrowser() {
-    if (sharedPDFBrowser) {
-        try {
-            if (sharedPDFBrowser.connected) return sharedPDFBrowser;
-        } catch (_) {}
-        sharedPDFBrowser = null;
+// Use one warm Chromium process for both BDRIS lookup and PDF rendering.
+// Starting two separate Chrome processes on Render Free wastes memory and makes
+// the first Certificate Preview unnecessarily slow.
+let sharedBrowser = null;
+let sharedBrowserPromise = null;
+async function getSharedBrowser() {
+    if (sharedBrowser) {
+        try { if (sharedBrowser.connected) return sharedBrowser; } catch (_) {}
+        sharedBrowser = null;
     }
-    sharedPDFBrowser = await launchBrowser();
-    return sharedPDFBrowser;
-}
-
-async function getSharedBDRISBrowser() {
-    if (sharedBDRISBrowser) {
+    if (sharedBrowserPromise) return sharedBrowserPromise;
+    sharedBrowserPromise = (async()=>{
         try {
-            if (sharedBDRISBrowser.connected) return sharedBDRISBrowser;
-        } catch (_) {}
-        sharedBDRISBrowser = null;
-    }
-    sharedBDRISBrowser = await launchBrowser();
-    return sharedBDRISBrowser;
+            sharedBrowser = await launchBrowser();
+            return sharedBrowser;
+        } finally {
+            sharedBrowserPromise = null;
+        }
+    })();
+    return sharedBrowserPromise;
 }
+async function getSharedPDFBrowser() { return getSharedBrowser(); }
+async function getSharedBDRISBrowser() { return getSharedBrowser(); }
 
 async function setInputValue(element, value) {
     await element.evaluate((input, nextValue) => {
@@ -295,8 +561,8 @@ async function setInputValue(element, value) {
 
 
 
-app.post('/api/generate-pdf', async (req, res) => {
-    const { html } = req.body;
+app.post('/api/generate-pdf', requireAuth, requireRateLimit, async (req, res) => {
+    const { html, fileName } = req.body;
 
     if (!html) {
         return res.status(400).json({
@@ -372,7 +638,7 @@ app.post('/api/generate-pdf', async (req, res) => {
 
         res.set({
             'Content-Type': 'application/pdf',
-            'Content-Disposition': 'inline; filename=Birth_Certificate.pdf',
+            'Content-Disposition': `inline; filename=\"${String(fileName||'Birth_Certificate.pdf').replace(/[\\/\":*?<>|]+/g,'_').slice(0,120)}\"`,
             'Content-Length': String(finalPdf.length),
             'Cache-Control': 'no-store'
         });
@@ -1504,27 +1770,18 @@ const port =
     process.env.PORT || 3000;
 
 
-app.listen(
-    port,
-    '0.0.0.0',
-    () => {
-
-        console.log('');
-        console.log(
-            '=========================================='
-        );
-        console.log(
-            '🚀 BDRIS SMART AUTO FILL READY'
-        );
-        console.log(
-            '=========================================='
-        );
-        console.log(
-            `🌐 Local: http://localhost:${port}`
-        );
-        console.log(`📱 Same-device: http://127.0.0.1:${port}`);
-        console.log('ℹ️ If running on a PC, open the PC LAN IP from the phone.');
-        console.log('');
-
-    }
-);
+async function startServer(){
+  await initPostgres();
+  const port = process.env.PORT || 3000;
+  app.listen(port,'0.0.0.0',()=>{
+    console.log('');
+    console.log('==========================================');
+    console.log('🚀 BDRIS SMART AUTO FILL READY');
+    console.log('==========================================');
+    console.log(`🌐 Local: http://localhost:${port}`);
+    console.log(`📱 Same-device: http://127.0.0.1:${port}`);
+    console.log('');
+    setTimeout(()=>{ getSharedBrowser().catch(()=>{}); },2500);
+  });
+}
+startServer().catch(err=>{console.error('Fatal startup error:',err);process.exit(1);});

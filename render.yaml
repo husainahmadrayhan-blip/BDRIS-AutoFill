@@ -2,11 +2,17 @@ services:
   - type: web
     name: bdris-autofill
     runtime: node
-    plan: free
-    buildCommand: npm install && npx puppeteer browsers install chrome
+    buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /ping
-    autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: BASE_RATE
+        value: "4"
