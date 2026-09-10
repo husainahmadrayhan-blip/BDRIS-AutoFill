@@ -55,6 +55,32 @@ function setPDFImageAdjust(axis,value){
   updatePDFImageAdjustUI();
 }
 function resetPDFImageAdjust(){imagePositionX=0;imagePositionY=0;imageZoom=100;imageWidth=100;imageHeight=100;updatePDFImageAdjustUI();status('Image position ও size reset হয়েছে।','ok');}
+function formatCertificateAddress(value, lang='bn') {
+  let text = String(value ?? '').replace(/\r/g, '').trim();
+  if (!text) return '';
+  // Keep the supplied address content, only normalize spacing/punctuation for clean certificate lines.
+  text = text.replace(/[ \t]*,[ \t]*/g, ', ').replace(/,{2,}/g, ',').replace(/^[, ]+|[, ]+$/g, '');
+  text = text.replace(/[ \t]{2,}/g, ' ');
+  const parts = text.split(/\n+/).map(x => x.trim()).filter(Boolean);
+  const max = lang === 'bn' ? 29 : 37;
+  const lines = [];
+  for (const raw of parts) {
+    const chunks = raw.split(/,\s*/).map(x => x.trim()).filter(Boolean);
+    let line = '';
+    for (const chunk of chunks) {
+      const candidate = line ? `${line}, ${chunk}` : chunk;
+      if (line && candidate.length > max) {
+        lines.push(line + ',');
+        line = chunk;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines.join('\n');
+}
+
 function buildInteractivePreviewHtml(baseHtml){
   if(!selectedPDFImageDataUrl) return baseHtml;
   const safeX=Number(imagePositionX)||0, safeY=Number(imagePositionY)||0;
@@ -603,11 +629,9 @@ function setCertificateType(type) {
 function changeBengaliFont() {
   const select = $('font-selector');
   selectedBengaliFont = select ? select.value : 'NikoshLight';
-  const family = {
-    NikoshLight: "'NikoshLight','Nikosh','Noto Serif Bengali',serif",
-    SolaimanLipi: "'SolaimanLipi','Siyam Rupali','Noto Serif Bengali',sans-serif",
-    SutonnyOMJ: "'SutonnyOMJ','SutonnyMJ','Noto Serif Bengali',serif"
-  }[selectedBengaliFont] || "'Noto Serif Bengali',serif";
+  // Mobile-safe: use the bundled Noto Sans Bengali for all editable Bengali fields.
+  // Legacy selection is retained only so saved records remain compatible.
+  const family = "'BDRIS Mobile Bengali','Noto Sans Bengali',Arial,sans-serif";
   document.querySelectorAll('#in_nameBn,#in_fatherBn,#in_motherBn,#in_fatherNationalityBn,#in_motherNationalityBn,#in_pobBn,#in_addrBn').forEach(el => {el.style.fontFamily=family;el.style.fontWeight='400';});
 }
 
@@ -1069,7 +1093,7 @@ async function generatePDF(options = {}) {
   try {
     [backgroundImage, bengaliRegularFont] = await Promise.all([
       imageDataUrl('/birth Background_page-0001-550K.jpg'),
-      fontDataUrl('/fonts/NotoSerifBengali-Regular-subset.woff2')
+      fontDataUrl('/fonts/NotoSansBengali-Regular.ttf')
     ]);
 
     selectedPDFImage = await ensureSelectedPDFImageData();
@@ -1116,15 +1140,14 @@ async function generatePDF(options = {}) {
   const motherNatEn = $("in_motherNationalityEn").value.trim();
   const pobBn = $("in_pobBn").value.trim();
   const pobEn = $("in_pobEn").value.trim();
-  const addrBn = registrationMode === 'death' ? '' : $("in_addrBn").value.trim();
-  const addrEn = registrationMode === 'death' ? '' : $("in_addrEn").value.trim();
+  const addrBn = registrationMode === 'death' ? '' : formatCertificateAddress($("in_addrBn").value, 'bn');
+  const addrEn = registrationMode === 'death' ? '' : formatCertificateAddress($("in_addrEn").value, 'en');
   const deathCauseBn = $("in_deathCauseBn")?.value.trim() || '';
   const deathCauseEn = $("in_deathCauseEn")?.value.trim() || '';
-  const selectedFontCSS = {
-    NikoshLight: "'NikoshLight','Nikosh','BDRIS Bengali','Noto Serif Bengali',serif",
-    SolaimanLipi: "'SolaimanLipi','Siyam Rupali','BDRIS Bengali','Noto Serif Bengali',sans-serif",
-    SutonnyOMJ: "'SutonnyOMJ','SutonnyMJ','BDRIS Bengali','Noto Serif Bengali',serif"
-  }[selectedBengaliFont] || "'BDRIS Bengali','Noto Serif Bengali',serif";
+  // Use one embedded, mobile-safe Bengali font for certificate rendering.
+  // The three legacy font names remain selectable in the UI for compatibility,
+  // but generated certificates always use the embedded Noto Sans Bengali font.
+  const selectedFontCSS = "'BDRIS Bengali','Noto Sans Bengali',Arial,sans-serif";
   const certificateStatus = certificateType === 'corrected' ? {bn:'সংশোধিত/',en:'Corrected'} : certificateType === 'duplicate' ? {bn:'প্রতিলিপি/',en:'Duplicate'} : {bn:'',en:''};
 
   const css = `
@@ -1154,7 +1177,7 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .barcode-box { position: absolute; right: 4mm; top: -12mm; width: 50mm; height: 6mm; display: flex; align-items: center; justify-content: center; z-index: 10; overflow: hidden; background: transparent; }
 .barcode-box svg { width: 100% !important; height: 100% !important; display: block; shape-rendering: crispEdges; }
 .cert-status-box { position: absolute; right: 4mm; top: -24mm; border: 1pt solid #000; display: flex; align-items: center; justify-content: center; min-width: 35mm; height: 7mm; padding: 0 2mm; overflow: hidden; white-space: nowrap; line-height: 1; z-index: 20; }
-.bn-status { font-family: ${selectedFontCSS}; font-size: 9.5pt; font-weight: 400; }
+.bn-status { font-family: ${selectedFontCSS}; font-size: 9pt; font-weight: 400; }
 .cert-status-box > span:last-child { font-family: "DejaVu Serif", serif; font-size: 8pt; font-weight: 400; margin-left: 1mm; }
 .header-container { display: block; text-align: center; width: 100%; padding-left: 14mm; margin-left: -3mm; }
 .gov-title { font-size: 13pt; font-weight: normal; margin: 0 0 8px 0; text-align: center; }
@@ -1163,27 +1186,30 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .zone-title-2 { font-size: 11pt; margin: 0 0 6px 0; text-align: center; font-weight: normal; }
 .rule-title { font-size: 9pt; margin: 6px auto 12px auto; text-align: center; }
 .cert-title { margin: 1px auto 0 auto; position: relative; top: -2mm; left: 4mm; text-align: center; display: block; }
-.cert-bn { font-size: 18pt; font-weight: bold; }
+.cert-bn { font-size: 17pt; font-weight: bold; }
 .cert-en { font-size: 14pt; font-weight: bold; }
 .meta-table { width: 100%; margin-top: 2mm; margin-bottom: 35px; border-collapse: collapse; border: none; }
 .meta-table td { padding: 2px 0; vertical-align: top; font-size: 10.5pt; border: none; }
 .reg-num-label { font-size: 11pt; }
 .reg-num-value { font-size: 12pt; }
+.reg-num-label { font-family: Arial, sans-serif !important; font-weight: 400 !important; }
+.reg-num-value { font-family: Arial, sans-serif !important; font-weight: 700 !important; letter-spacing: .15px; }
+.brn-label-normal{font-family:Arial,sans-serif!important;font-weight:400!important}.brn-value-bold{font-family:Arial,sans-serif!important;font-weight:700!important}
 .meta-value-row td { position: relative; top: -0.5mm; }
 .info-table { width: 100%; border-collapse: collapse; margin-bottom: 60px; border: none; }
-.info-table td { padding: 6.5px 0; vertical-align: top; font-size: 11pt; line-height: 1.4; position: relative; top: -3mm; border: none; }
+.info-table td { padding: 6.5px 0; vertical-align: top; font-size: 10.5pt; line-height: 1.4; position: relative; top: -3mm; border: none; }
 .dob-row td { top: -5mm !important; }
 .img-row-fix td { top: -7mm !important; }
 .address-row-shift td { top: 0 !important; }
-.label-bn-main { width: 18%; font-size: 14pt !important; font-weight: 400; }
-.address-bn-font { width: 18%; font-size: 13pt !important; font-weight: 400; }
+.label-bn-main { width: 18%; font-size: 13.5pt !important; font-weight: 400; }
+.address-bn-font { width: 18%; font-size: 12.5pt !important; font-weight: 400; }
 .colon-cell { width: 3%; text-align: center; position: relative; left: 2mm; }
-.value-bn-main { width: 32%; font-size: 14pt !important; font-weight: 400; padding-right: 10px; }
-.value-bn-shift { position: relative; left: 3mm; }
+.value-bn-main { width: 32%; font-size: 12.5pt !important; font-weight: 400; padding-right: 10px; }
+.value-bn-shift { position: relative; left: 3mm; white-space: pre-line; overflow-wrap:anywhere; word-break:normal; line-height:1.28; }
 .label-en { width: 11%; font-size: 11pt; position: relative; left: 0; }
 .value-en { width: 36%; font-size: 11pt; position: relative; left: 0; }
 .value-en-text { position: relative; left: 3mm; }
-.address-en-block { display: inline-block; vertical-align: top; width: calc(100% - 3mm); position: relative; left: 3mm; }
+.address-en-block { display: inline-block; vertical-align: top; width: calc(100% - 3mm); position: relative; left: 3mm; white-space:pre-line; overflow-wrap:anywhere; line-height:1.28; }
 .dob-value-fix { position: relative; left: 3mm; }
 .birth-date-row td { top: -5mm !important; padding: 1px 0 !important; line-height: 1.15 !important; }
 .death-date-row td { top: -5mm !important; padding: 1px 0 !important; line-height: 1.15 !important; }
@@ -1202,7 +1228,7 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .sig-font-11 { font-size: 11pt !important; }
 .sig-title { font-weight: normal; }
 .bottom-note { position: absolute; z-index: 1; bottom: 29mm; left: 0; width: 100%; text-align: center; font-size: 8.5pt; color: #000; font-family: Arial, sans-serif; }
-@font-face { font-family: 'BDRIS Bengali'; src: url('${bengaliRegularFont}') format('woff2'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'BDRIS Bengali'; src: url('/fonts/NotoSansBengali-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
 `;
 
   const htmlContent = `<!DOCTYPE html>
@@ -1556,11 +1582,11 @@ body:not(.login-locked) .close-preview{background:#fff !important;color:#334155 
 
   <table class="meta-table"><tr>
     <td style="width:30%;text-align:left">Date of Registration</td>
-    <td style="width:40%;text-align:center;letter-spacing:.5px"><span class="serif-text reg-num-label">Birth Registration Number</span></td>
+    <td style="width:40%;text-align:center;letter-spacing:.5px"><span class="reg-num-label brn-label-normal">Birth Registration Number</span></td>
     <td style="width:30%;text-align:left;padding-left:12mm">Date of Issuance</td>
   </tr><tr class="meta-value-row">
     <td style="text-align:left">${escPdf(regDate)}</td>
-    <td style="text-align:center;font-weight:bold"><span class="serif-text reg-num-value">${escPdf(brn)}</span></td>
+    <td style="text-align:center;font-weight:bold"><span class="reg-num-value brn-value-bold">${escPdf(brn)}</span></td>
     <td style="text-align:left;padding-left:12mm">${escPdf(issuanceDate)}</td>
   </tr></table>
 

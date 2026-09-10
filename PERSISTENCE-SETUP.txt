@@ -1,0 +1,13 @@
+BDRIS AutoFill - Persistence / Zone Image Setup
+
+1. Render Postgres: use the existing bdris-autofill-db database.
+2. Web Service -> Environment -> add DATABASE_URL using the Postgres Internal Database URL.
+3. Add AUTH_SECRET with a long random secret. Keep it stable; do not change it after users have been issued access links unless you intend to invalidate old links.
+4. Keep LOCAL_DIRECT_MODE=false in production.
+5. Build command: npm install && npx puppeteer browsers install chrome
+6. Start command: node server.js
+
+Zone Image:
+Admin -> Zone Image & Position Manager -> add Office + Zone + Image -> Position.
+The Position editor uses the full A4 certificate background. Save the image and position.
+User -> choose Image সহ. The app reads eVerify Registration Office / Zone and automatically uses the matching saved image and position. Image ছাড়া is the default.
