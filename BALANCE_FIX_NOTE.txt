@@ -1,0 +1,6 @@
+BALANCE + PER-USER PREVIEW RATE FIX
+
+Each user now has previewRate (default ৳4). Admin can set it independently per user.
+Certificate Preview charges the logged-in user's previewRate; client cannot override the server-side rate.
+Editing history/form fields itself does not charge.
+Balance/auth payload includes previewRate so the current rate is shown after login.

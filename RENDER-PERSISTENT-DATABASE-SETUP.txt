@@ -1,0 +1,31 @@
+RENDER PERSISTENT USER/BALANCE STORAGE
+
+This build supports PostgreSQL persistence.
+
+1) Create/attach a Render PostgreSQL database to the service.
+2) Set the service environment variable DATABASE_URL to the database's internal connection URL.
+3) Keep AUTH_SECRET set to a stable long random value.
+4) Build command: npm install
+5) Start command: npm start
+6) Do not use LOCAL_DIRECT_MODE for production.
+
+On first startup the app creates:
+- bdris_users
+- bdris_balance_history
+
+If DATABASE_URL is missing, the app falls back to .private/users.json; that fallback is NOT guaranteed to survive Render redeploys/restarts on an ephemeral filesystem.
+
+Balance behavior:
+- Server-stored balance wins over stale access-link payloads.
+- Preview charges use the user's server-side previewRate.
+- Admin balance changes are recorded in balance history.
+- User deletion removes the user from PostgreSQL.
+
+
+IMPORTANT – COLD START / HISTORY FIX (V3):
+- Render Free may sleep after inactivity; the first request can take around 10–20 seconds. This is a platform limitation and is not removed by application code.
+- When DATABASE_URL is configured, PostgreSQL remains the source of truth for users and balance history.
+- On startup the app reloads balance history from PostgreSQL, so Transaction/Balance History does not disappear after a cold start or restart.
+- PostgreSQL startup connection is retried before normal startup; the app no longer silently disables the configured DB because of a temporary startup connection failure.
+- Balance history writes are retried and are not silently ignored.
+- Existing working features are otherwise unchanged.

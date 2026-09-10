@@ -1,0 +1,36 @@
+BDRIS AutoFill V4 – Zone Image / Fast Print / Sub Admin
+
+1) Zone Image Position
+- Main Admin > Zone Image / Position
+- Enter Office (e.g. Dhaka South City Corporation) and Zone No (e.g. 07)
+- Upload transparent PNG/WEBP/SVG/JPG image
+- Drag image on A4 preview and resize with handle
+- Save Zone + Position
+- eVerify Registration Office Zone is used for automatic matching
+
+2) User Image workflow
+- User does not manually select a library image
+- Normal PDF Print/Download = without image
+- Image সহ Print/Download = automatically finds the matching Office + Zone image and applies the Admin-saved position
+- No matching Zone = clear message; no wrong image is selected
+
+3) Faster printing
+- Added browser Print and Image সহ Print paths using the existing certificate HTML preview, avoiding a second server PDF round-trip for printing.
+- PDF download continues to use the real generated PDF.
+
+4) Transparent image support
+- PNG, WEBP and SVG transparency are supported in the image library.
+
+5) Mobile DOB
+- Date of Birth input is a normal text/numeric-friendly field and can be typed directly on mobile.
+
+6) Sub Admin
+- Main Admin can create Sub Admin accounts and set a Base Rate.
+- Sub Admin can create customer accounts under their own account.
+- Customer Preview Rate cannot be below the Sub Admin Base Rate.
+- The difference between Customer Rate and Base Rate is recorded as Sub Admin commission.
+- Main Admin can see Sub Admin commission balance and change Base Rate.
+
+7) Persistence
+- PostgreSQL stores users, balances, balance history, commission balance/history, and Zone Image/Position records when DATABASE_URL is configured.
+- Render Free sleep itself is not disabled by this code; persistent data survives cold starts when PostgreSQL is configured.
