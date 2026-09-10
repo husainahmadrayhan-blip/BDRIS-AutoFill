@@ -107,6 +107,7 @@ async function syncPostgres(){
 }
 function queuePgSync(){ if(!pgReady)return; clearTimeout(pgSyncTimer); pgSyncTimer=setTimeout(()=>syncPostgres().catch(()=>{}),120); }
 const requestRate = new Map();
+const chargeLocks = new Map();
 function rateLimit(key, max=40, windowMs=60000){
   const now=Date.now(); const item=requestRate.get(key);
   if(!item || now-item.started>windowMs){ requestRate.set(key,{started:now,count:1}); return true; }
@@ -292,16 +293,25 @@ app.post('/api/balance/charge',requireAuth,requireRateLimit,async (req,res)=>{
   const amount=Math.max(baseRate, Number(user.rate)||baseRate);
   const certificateId=String(req.body?.certificateId||'').trim();
   if(!certificateId) return res.status(400).json({ok:false,error:'Certificate ID required.'});
-  const existing=transactionStore.transactions.find(t=>t.userId===user.id && t.certificateId===certificateId && t.type==='certificate_preview');
-  if(existing){ return res.json({ok:true,balance:Number(user.balance)||0,charged:0,alreadyCharged:true,transactionId:existing.id,auth:sealUserPayload(user)}); }
-  user.balance=Number(user.balance)||0;
-  if(user.balance < amount) return res.status(402).json({ok:false,error:'Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳4।',balance:user.balance,required:amount});
-  user.balance=Math.round((user.balance-amount)*100)/100;
-  const tx={id:newToken(),type:'certificate_preview',userId:user.id,certificateId,amount,baseRate,commission:Math.max(0,amount-baseRate),createdAt:Date.now(),balanceAfter:user.balance};
-  transactionStore.transactions.push(tx);
-  saveAuthStore(authStore); saveJsonFile(TX_FILE,transactionStore);
-  await syncPostgres();
-  res.json({ok:true,balance:user.balance,charged:amount,alreadyCharged:false,transactionId:tx.id,auth:sealUserPayload(user)});
+  const lockKey=String(user.id)+'::'+certificateId;
+  if(chargeLocks.has(lockKey)){
+    const existing=transactionStore.transactions.find(t=>t.userId===user.id && t.certificateId===certificateId && t.type==='certificate_preview');
+    if(existing) return res.json({ok:true,balance:Number(user.balance)||0,charged:0,alreadyCharged:true,transactionId:existing.id,auth:sealUserPayload(user)});
+    return res.status(409).json({ok:false,error:'এই Certificate Preview ইতিমধ্যে process হচ্ছে। আবার চেষ্টা করুন।'});
+  }
+  chargeLocks.set(lockKey,true);
+  try{
+    const existing=transactionStore.transactions.find(t=>t.userId===user.id && t.certificateId===certificateId && t.type==='certificate_preview');
+    if(existing) return res.json({ok:true,balance:Number(user.balance)||0,charged:0,alreadyCharged:true,transactionId:existing.id,auth:sealUserPayload(user)});
+    user.balance=Number(user.balance)||0;
+    if(user.balance < amount) return res.status(402).json({ok:false,error:`Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳${amount}।`,balance:user.balance,required:amount});
+    user.balance=Math.round((user.balance-amount)*100)/100;
+    const tx={id:newToken(),type:'certificate_preview',userId:user.id,certificateId,amount,baseRate,commission:Math.max(0,amount-baseRate),createdAt:Date.now(),balanceAfter:user.balance};
+    transactionStore.transactions.push(tx);
+    saveAuthStore(authStore); saveJsonFile(TX_FILE,transactionStore);
+    await syncPostgres();
+    return res.json({ok:true,balance:user.balance,charged:amount,alreadyCharged:false,transactionId:tx.id,auth:sealUserPayload(user)});
+  } finally { chargeLocks.delete(lockKey); }
 });
 
 app.post('/api/certificates',requireAuth,requireRateLimit,async (req,res)=>{

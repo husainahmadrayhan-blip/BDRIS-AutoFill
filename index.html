@@ -746,7 +746,7 @@ const AUTH_KEY='BDRIS_AUTH_TOKEN_V1', DEVICE_KEY='BDRIS_DEVICE_ID_V1';
 const accessParams=new URLSearchParams(location.search);const accessToken=accessParams.get('access') || sessionStorage.getItem('BDRIS_ACCESS_TOKEN') || '';const accessUserId=accessParams.get('uid') || sessionStorage.getItem('BDRIS_ACCESS_USER_ID') || '';const accessAuth=accessParams.get('auth') || sessionStorage.getItem('BDRIS_ACCESS_AUTH') || '';
 function getDeviceId(){let id=localStorage.getItem(DEVICE_KEY);if(!id){id=crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);localStorage.setItem(DEVICE_KEY,id)}return id}
 const API_BASE=(location.protocol==='file:'?'http://localhost:3000':''); const originalFetch=window.fetch.bind(window);window.fetch=async function(input,init={}){const url=typeof input==='string'?input:(input?.url||'');if(url.startsWith('/api/')&&!url.includes('/api/auth/login')&&!url.includes('/api/auth/admin-login'))init={...init,headers:{...(init.headers||{}),Authorization:'Bearer '+(localStorage.getItem(AUTH_KEY)||''),'X-Device-Id':getDeviceId()}};return originalFetch((typeof input==='string'&&input.startsWith('/api/')&&location.protocol==='file:')?API_BASE+input:input,init)};
-async function doLogin(e){e.preventDefault();const btn=$('loginBtn'),msg=$('loginMessage'),screen=$('loginScreen');screen.classList.remove('login-error','login-success','child-pull');screen.classList.add('child-pull');msg.className='login-message';msg.textContent='Verifying secure access…';btn.disabled=true;btn.classList.add('loading');try{if(!accessToken)throw Error('এই Login Link-এ access code নেই। Admin থেকে তৈরি করা user link ব্যবহার করুন।');const r=await originalFetch((location.protocol==='file:'?API_BASE:'')+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('loginUsername').value.trim(),password:$('loginPassword').value,accessToken:accessToken||'',deviceId:getDeviceId(),userId:accessUserId||'',auth:accessAuth||''})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||'Login failed');localStorage.setItem(AUTH_KEY,d.token);localStorage.setItem('BDRIS_USER_ID',d.user.id);sessionStorage.setItem('BDRIS_ACCESS_TOKEN',accessToken);if(accessUserId)sessionStorage.setItem('BDRIS_ACCESS_USER_ID',accessUserId);if(d.auth)persistFreshAuth(d);else if(accessAuth)sessionStorage.setItem('BDRIS_ACCESS_AUTH',accessAuth);screen.classList.add('login-success');msg.className='login-message success';msg.textContent='Login successful. Opening system…';setTimeout(()=>{screen.classList.add('hidden');document.body.classList.remove('login-locked')},650)}catch(err){screen.classList.add('login-error');msg.className='login-message error';msg.textContent=(err&&err.name==='TypeError'&&/fetch/i.test(err.message))?'Server Connection Error: Server চালু নেই বা এই page সরাসরি file:// থেকে খোলা হয়েছে। RUN-SERVER.bat চালু করে http://localhost:3000 খুলুন।':(/Username বা Password ভুল/i.test(err.message||'')?'সঠিক পাসওয়ার্ড দিন।':(err.message||'Login failed'))}finally{btn.disabled=false;btn.classList.remove('loading')}}
+async function doLogin(e){e.preventDefault();const btn=$('loginBtn'),msg=$('loginMessage'),screen=$('loginScreen');screen.classList.remove('login-error','login-success','child-pull');screen.classList.add('child-pull');msg.className='login-message';msg.textContent='Verifying secure access…';btn.disabled=true;btn.classList.add('loading');try{const r=await originalFetch((location.protocol==='file:'?API_BASE:'')+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('loginUsername').value.trim(),password:$('loginPassword').value,accessToken:accessToken||'',deviceId:getDeviceId(),userId:accessUserId||'',auth:accessAuth||''})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||'Login failed');localStorage.setItem(AUTH_KEY,d.token);localStorage.setItem('BDRIS_USER_ID',d.user.id);if(accessToken)sessionStorage.setItem('BDRIS_ACCESS_TOKEN',accessToken);else sessionStorage.removeItem('BDRIS_ACCESS_TOKEN');if(accessUserId)sessionStorage.setItem('BDRIS_ACCESS_USER_ID',accessUserId);else sessionStorage.removeItem('BDRIS_ACCESS_USER_ID');if(d.auth)persistFreshAuth(d);else if(accessAuth)sessionStorage.setItem('BDRIS_ACCESS_AUTH',accessAuth);screen.classList.add('login-success');msg.className='login-message success';msg.textContent='Login successful. Opening system…';setTimeout(()=>{screen.classList.add('hidden');document.body.classList.remove('login-locked')},650)}catch(err){screen.classList.add('login-error');msg.className='login-message error';msg.textContent=(err&&err.name==='TypeError'&&/fetch/i.test(err.message))?'Server Connection Error: Server চালু নেই বা এই page সরাসরি file:// থেকে খোলা হয়েছে। RUN-SERVER.bat চালু করে http://localhost:3000 খুলুন।':(/Username বা Password ভুল/i.test(err.message||'')?'সঠিক পাসওয়ার্ড দিন।':(err.message||'Login failed'))}finally{btn.disabled=false;btn.classList.remove('loading')}}
 async function bootAuth(){const token=localStorage.getItem(AUTH_KEY);if(!token)return;try{const r=await originalFetch('/api/auth/me',{headers:{Authorization:'Bearer '+token,'X-Device-Id':getDeviceId()}});if(r.ok){const d=await r.json().catch(()=>null);if(!accessToken||d?.session?.accessToken===accessToken){$('loginScreen').classList.add('hidden');document.body.classList.remove('login-locked');return}}}catch(_){}localStorage.removeItem(AUTH_KEY)}
 
 let currentSessionId = null;
@@ -2433,10 +2433,17 @@ async function refreshUserBalance(){
   catch(_){}
 }
 let previewChargeInFlight = null;
+function previewCertificateId(){
+  const payload={mode:registrationMode,type:certificateType,form:collectPDFFormData()};
+  const text=JSON.stringify(payload); let h=2166136261;
+  for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}
+  return 'cert-'+(h>>>0).toString(16)+'-'+text.length;
+}
+function isEditingExistingHistory(){ return !!editingHistoryId; }
 async function chargeForPreview(){
   if(previewChargeInFlight) return previewChargeInFlight;
   previewChargeInFlight = (async()=>{
-  const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:4})});
+  const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({certificateId:previewCertificateId()})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok||!d.ok) throw new Error(d.error||'Balance charge failed');
   persistFreshAuth(d);
@@ -2446,7 +2453,8 @@ async function chargeForPreview(){
   try { return await previewChargeInFlight; } finally { previewChargeInFlight = null; }
 }
 async function previewPDF(options={}){
-  if(!options.skipCharge){
+  const skipCharge=!!options.skipCharge || isEditingExistingHistory();
+  if(!skipCharge){
     try{ await chargeForPreview(); }catch(e){ status(e.message,'err'); await refreshUserBalance(); return; }
   }
   const previewPromise = generatePDF({saveHistory:false,showPreviewEarly:true});
