@@ -1,5 +1,6 @@
-BALANCE ZERO FIX
-- Valid encrypted access payload is now preferred during login, so a server restart with an old/empty local users.json does not overwrite the latest balance.
-- Fresh balance auth payload is stored in sessionStorage and localStorage keyed by access token.
-- Existing auth/access/balance API behavior is preserved.
-- Render Free filesystem is still ephemeral; this is a stateless access-payload recovery fix, not a replacement for an external database/persistent disk.
+BALANCE + PER-USER PREVIEW RATE FIX
+
+Each user now has previewRate (default ৳4). Admin can set it independently per user.
+Certificate Preview charges the logged-in user's previewRate; client cannot override the server-side rate.
+Editing history/form fields itself does not charge.
+Balance/auth payload includes previewRate so the current rate is shown after login.
