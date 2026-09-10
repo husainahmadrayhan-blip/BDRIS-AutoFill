@@ -65,6 +65,7 @@ function safeImageName(name){ return String(name||'').trim().replace(/[\\/:*?"<>
 const DEFAULT_PDF_IMAGE_NAMES = ['জুন-০৭','জুন-০৮','জুন-০৯','উত্তর','চট্টগ্রাম সিটি zon-03','zon-2','zon-01','zon-05','union'];
 let pdfImageStore = loadPDFImageLibrary();
 if(!Array.isArray(pdfImageStore.images)) pdfImageStore={images:[]};
+for(const im of pdfImageStore.images){ if(!im.defaultPosition) im.defaultPosition={x:105,y:247,width:24,height:10,zoom:100}; }
 let changedDefaultImages=false;
 for(const name of DEFAULT_PDF_IMAGE_NAMES){
   if(!pdfImageStore.images.some(x=>x.name===name)){
@@ -73,7 +74,13 @@ for(const name of DEFAULT_PDF_IMAGE_NAMES){
   }
 }
 if(changedDefaultImages) savePDFImageLibrary(pdfImageStore);
-function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
+function pdfImageMeta(x){
+  const p=x.defaultPosition||{};
+  return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,createdAt:x.createdAt,updatedAt:x.updatedAt,
+    defaultPosition:{x:Number.isFinite(Number(p.x))?Number(p.x):105,y:Number.isFinite(Number(p.y))?Number(p.y):247,
+      width:Number.isFinite(Number(p.width))?Number(p.width):24,height:Number.isFinite(Number(p.height))?Number(p.height):10,
+      zoom:Number.isFinite(Number(p.zoom))?Number(p.zoom):100}};
+}
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
 app.post('/api/auth/login',(req,res)=>{const {username,password,accessToken,deviceId,userId,auth}=req.body||{};if(!username||!password||!accessToken||!deviceId)return res.status(400).json({ok:false,error:'Username, password, access link এবং device তথ্য প্রয়োজন।'});let user=authStore.users.find(u=>u.accessToken===accessToken);if(!user&&userId)user=authStore.users.find(u=>u.id===String(userId));if(auth){const r=openUserPayload(auth);if(r&&r.accessToken===accessToken&&r.id===String(userId||r.id)&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){const stored=authStore.users.find(u=>u.id===r.id);user={...(stored||{}),...r,deviceId:stored?.deviceId||'',lastLoginAt:stored?.lastLoginAt||null,balance:Number(r.balance)||0,previewRate:Number.isFinite(Number(r.previewRate))&&Number(r.previewRate)>=0?Number(r.previewRate):(Number.isFinite(Number(stored?.previewRate))&&Number(stored.previewRate)>=0?Number(stored.previewRate):4)};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}if(!user||!user.enabled)return res.status(403).json({ok:false,error:'এই access link সক্রিয় নেই।'});if(user.username!==username||user.passwordHash!==hashPassword(password))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই access link অন্য একটি device-এর সাথে যুক্ত আছে।'});if(!user.deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken,createdAt:Date.now()});res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});});
@@ -97,7 +104,24 @@ app.post('/api/balance/charge',requireAuth,(req,res)=>{
   res.json({ok:true,balance:user.balance,charged:amount,previewRate:amount,auth:sealUserPayload(user)});
 });
 
-app.get('/api/admin/users',requireAdmin,(req,res)=>res.json({ok:true,users:authStore.users.map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})}));
+app.get('/api/admin/users',requireAdmin,(req,res)=>{
+  // Always refresh the admin list from the persisted store before rendering.
+  // This keeps the Admin panel independent of whether a user has logged in.
+  // No user-login action is required to make an already-created user visible.
+  try{
+    const diskStore=loadAuthStore();
+    if(Array.isArray(diskStore.users)){
+      const byId=new Map((authStore.users||[]).map(u=>[String(u.id),u]));
+      for(const u of diskStore.users){
+        const existing=byId.get(String(u.id));
+        if(existing) Object.assign(existing,u); else authStore.users.push(u);
+      }
+      // Preserve records that exist in memory but have not yet been flushed.
+      saveAuthStore(authStore);
+    }
+  }catch(_){}
+  res.json({ok:true,users:(authStore.users||[]).map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})});
+});
 app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:4};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
 app.patch('/api/admin/users/:id',requireAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}if(req.body.setPreviewRate!==undefined){const n=Number(req.body.setPreviewRate);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid preview rate.'});user.previewRate=Math.round(n*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;safe.auth=sealUserPayload(user);res.json({ok:true,user:safe});});
 app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);res.json({ok:true});});
@@ -122,7 +146,7 @@ app.post('/api/pdf-images', (req,res)=>{
   let image = requestedId ? store.images.find(x=>x.id===requestedId) : null;
   if(!image) image=store.images.find(x=>x.name===cleanName);
   if(!image){
-    image={id:crypto.randomBytes(12).toString('hex'),name:cleanName,fileName:'',mimeType:'',createdAt:Date.now(),updatedAt:Date.now()};
+    image={id:crypto.randomBytes(12).toString('hex'),name:cleanName,fileName:'',mimeType:'',createdAt:Date.now(),updatedAt:Date.now(),defaultPosition:{x:105,y:247,width:24,height:10,zoom:100}};
     store.images.push(image);
   }
   if(!dataUrl){ savePDFImageLibrary(store); return res.json({ok:true,image:pdfImageMeta(image),needsUpload:!image.fileName}); }
@@ -141,14 +165,28 @@ app.post('/api/pdf-images', (req,res)=>{
 });
 
 app.patch('/api/pdf-images/:id', (req,res)=>{
-  const requested=safeImageName(req.body?.name);
-  if(!requested) return res.status(400).json({ok:false,error:'নতুন Image-এর নাম দিন।'});
+  const body=req.body||{};
+  const requested=body.name===undefined ? '' : safeImageName(body.name);
   let store=loadPDFImageLibrary();
   const image=store.images.find(x=>x.id===req.params.id);
   if(!image) return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
-  const duplicate=store.images.find(x=>x.name===requested && x.id!==image.id);
-  if(duplicate) return res.status(409).json({ok:false,error:'এই নামে আরেকটি Image আগে থেকেই আছে।'});
-  image.name=requested; image.updatedAt=Date.now();
+  if(body.name!==undefined){
+    if(!requested) return res.status(400).json({ok:false,error:'নতুন Image-এর নাম দিন।'});
+    const duplicate=store.images.find(x=>x.name===requested && x.id!==image.id);
+    if(duplicate) return res.status(409).json({ok:false,error:'এই নামে আরেকটি Image আগে থেকেই আছে।'});
+    image.name=requested;
+  }
+  if(body.defaultPosition){
+    const q=body.defaultPosition;
+    const x=Math.max(0,Math.min(210,Number(q.x)));
+    const y=Math.max(0,Math.min(297,Number(q.y)));
+    const width=Math.max(8,Math.min(180,Number(q.width)));
+    const height=Math.max(5,Math.min(250,Number(q.height)));
+    const zoom=Math.max(50,Math.min(300,Number(q.zoom)));
+    if([x,y,width,height,zoom].every(Number.isFinite)) image.defaultPosition={x,y,width,height,zoom};
+    else return res.status(400).json({ok:false,error:'Image position-এর X/Y/Width/Height/Zoom সঠিক নয়।'});
+  }
+  image.updatedAt=Date.now();
   savePDFImageLibrary(store);
   res.json({ok:true,image:pdfImageMeta(image)});
 });
@@ -415,18 +453,32 @@ app.post('/api/init-search', async (req, res) => {
 
         page = await browser.newPage();
 
+        // Fast eVerify load: keep document/scripts/XHR and the CAPTCHA image,
+        // but skip fonts/media/tracking images that are not needed to fetch data.
+        await page.setRequestInterception(true);
+        page.on('request', request => {
+            const type = request.resourceType();
+            const url = request.url();
+            if (type === 'font' || type === 'media' ||
+                (type === 'image' && !/captcha/i.test(url))) {
+                request.abort().catch(() => {});
+            } else {
+                request.continue().catch(() => {});
+            }
+        });
+
         await page.goto(
             'https://everify.bdris.gov.bd/',
             {
                 waitUntil: 'domcontentloaded',
-                timeout: 30000
+                timeout: 20000
             }
         );
 
         await page.waitForSelector(
             'input',
             {
-                timeout: 15000
+                timeout: 8000
             }
         );
 
@@ -726,7 +778,7 @@ app.post('/api/submit-captcha', async (req, res) => {
         await Promise.race([
             page.waitForNavigation({
                 waitUntil: 'domcontentloaded',
-                timeout: 8000
+                timeout: 5500
             }).catch(() => {}),
 
             page.waitForFunction(() => {
@@ -737,12 +789,12 @@ app.post('/api/submit-captcha', async (req, res) => {
                 const hasKnownResult = /নিবন্ধিত ব্যক্তির নাম|পিতার নাম|মাতার নাম|registered person|father.?s name|mother.?s name/i.test(text);
                 const hasCaptchaError = /captcha|ক্যাপচা|invalid|incorrect|সঠিক নয়|সঠিক নয়|ভুল কোড|verification failed/i.test(text);
                 return hasRows || hasResultContainer || hasKnownResult || hasCaptchaError || /certificate\/verify/i.test(html);
-            }, { timeout: 8000, polling: 100 }).catch(() => {})
+            }, { timeout: 5500, polling: 75 }).catch(() => {})
         ]);
 
         // Give a fast AJAX response a very small settling window. This is not a
         // fixed 20-second wait and does not block on unrelated network requests.
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise(resolve => setTimeout(resolve, 60));
 
         /* RESULT CHECK */
         const pageSignal = await page.evaluate(() => {
@@ -832,19 +884,22 @@ app.post('/api/submit-captcha', async (req, res) => {
 
 
                 if (cells.length >= 4) {
-
                     records.push({
-
-                        label: cells[0],
-
-                        value: cells[1],
-
-                        englishLabel: cells[2],
-
-                        englishValue: cells[3]
-
+                        label: cells[0], value: cells[1],
+                        englishLabel: cells[2], englishValue: cells[3]
                     });
-
+                } else if (cells.length === 3) {
+                    // Some newer eVerify result blocks omit the English label.
+                    records.push({
+                        label: cells[0], value: cells[1],
+                        englishLabel: cells[0], englishValue: cells[2]
+                    });
+                } else if (cells.length === 2) {
+                    // New/older certificate layouts may be simple Label/Value rows.
+                    records.push({
+                        label: cells[0], value: cells[1],
+                        englishLabel: cells[0], englishValue: cells[1]
+                    });
                 }
 
             }
@@ -870,17 +925,11 @@ app.post('/api/submit-captcha', async (req, res) => {
 
 
                 return records.find(row => {
-
-                    return (
-
-                        norm(row.label) === bn
-
-                        &&
-
-                        norm(row.englishLabel) === en
-
-                    );
-
+                    const rb = norm(row.label);
+                    const re = norm(row.englishLabel);
+                    const bnMatch = bn && (rb === bn || rb.includes(bn) || bn.includes(rb));
+                    const enMatch = en && (re === en || re.includes(en) || en.includes(re));
+                    return (bnMatch && enMatch) || bnMatch || enMatch;
                 }) || null;
 
             }

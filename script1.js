@@ -30,36 +30,42 @@ let selectedPDFImageId = '';
 let selectedPDFImageName = '';
 let selectedPDFImageDataUrl = '';
 let pendingPDFImageId = '';
-let imagePositionX = 0;
-let imagePositionY = 0;
+let imagePositionX = 105;
+let imagePositionY = 247;
 let imageZoom = 100;
-let imageWidth = 100;
-let imageHeight = 100;
+let imageWidth = 24;
+let imageHeight = 10;
 let pdfPreviewRefreshTimer = null;
 let pdfPreviewNeedsHistorySave = false;
 
 function updatePDFImageAdjustUI(){
-  const panel=$('pdfImageAdjust');
-  if(panel) panel.style.display = selectedPDFImageDataUrl ? 'none' : 'none';
   const frame=$('certIframe');
   if(frame && frame.contentWindow) frame.contentWindow.postMessage({type:'pdf-image-sync',x:imagePositionX,y:imagePositionY,w:imageWidth,h:imageHeight,z:imageZoom},'*');
 }
 function setPDFImageAdjust(axis,value){
   const n=Number(value)||0;
-  if(axis==='x')imagePositionX=n;
-  if(axis==='y')imagePositionY=n;
-  if(axis==='z')imageZoom=100;
-  if(axis==='w')imageWidth=Math.max(20,Math.min(100,n));
-  if(axis==='h')imageHeight=Math.max(8,Math.min(100,n));
-  pdfBlob=null; if(pdfUrl){URL.revokeObjectURL(pdfUrl); pdfUrl=null;} pdfPreviewNeedsHistorySave=true;
+  if(axis==='x')imagePositionX=Math.max(0,Math.min(210,n));
+  if(axis==='y')imagePositionY=Math.max(0,Math.min(297,n));
+  if(axis==='z')imageZoom=Math.max(50,Math.min(300,n));
+  if(axis==='w')imageWidth=Math.max(8,Math.min(180,n));
+  if(axis==='h')imageHeight=Math.max(5,Math.min(250,n));
+  pdfBlob=null; if(pdfUrl){URL.revokeObjectURL(pdfUrl);pdfUrl=null;} pdfPreviewNeedsHistorySave=true;
   updatePDFImageAdjustUI();
 }
-function resetPDFImageAdjust(){imagePositionX=0;imagePositionY=0;imageZoom=100;imageWidth=100;imageHeight=100;updatePDFImageAdjustUI();status('Image position ও size reset হয়েছে।','ok');}
+function applyPDFImagePreset(pos){
+  const p=pos||{};
+  imagePositionX=Number.isFinite(Number(p.x))?Math.max(0,Math.min(210,Number(p.x))):105;
+  imagePositionY=Number.isFinite(Number(p.y))?Math.max(0,Math.min(297,Number(p.y))):247;
+  imageWidth=Number.isFinite(Number(p.width))?Math.max(8,Math.min(180,Number(p.width))):24;
+  imageHeight=Number.isFinite(Number(p.height))?Math.max(5,Math.min(250,Number(p.height))):10;
+  imageZoom=Number.isFinite(Number(p.zoom))?Math.max(50,Math.min(300,Number(p.zoom))):100;
+}
+function resetPDFImageAdjust(){imagePositionX=105;imagePositionY=247;imageZoom=100;imageWidth=24;imageHeight=10;updatePDFImageAdjustUI();status('Image position ও size reset হয়েছে।','ok');}
 function buildInteractivePreviewHtml(baseHtml){
   if(!selectedPDFImageDataUrl) return baseHtml;
-  const safeX=Number(imagePositionX)||0, safeY=Number(imagePositionY)||0;
-  const safeW=Math.max(20,Math.min(100,Number(imageWidth)||100));
-  const safeH=Math.max(8,Math.min(100,Number(imageHeight)||100));
+  const safeX=Number(imagePositionX)||105, safeY=Number(imagePositionY)||247;
+  const safeW=Math.max(8,Math.min(180,Number(imageWidth)||24));
+  const safeH=Math.max(5,Math.min(250,Number(imageHeight)||10));
   const editor=`<div class="pdf-image-editor-frame" id="pdfImageEditorFrame">
     <div class="pdf-image-editor-box" id="pdfImageEditorBox">
       <img id="pdfImageEditorImg" src="${String(selectedPDFImageDataUrl).replace(/"/g,'&quot;')}" alt="Selected PDF Image">
@@ -69,87 +75,126 @@ function buildInteractivePreviewHtml(baseHtml){
   </div>`;
   const html=baseHtml.replace(/<div class="pdf-image-overlay">[\s\S]*?<\/div>/, editor);
   const script=`<style>
-.pdf-image-editor-frame{position:absolute;left:5mm;bottom:5mm;width:200mm;height:90mm;overflow:hidden;z-index:50;pointer-events:auto;box-sizing:border-box;background:transparent}
-.pdf-image-editor-box{position:absolute;left:50%;top:50%;box-sizing:border-box;border:2px solid #2d7cff;cursor:move;transform:translate(-50%,-50%);transform-origin:center center;touch-action:none;min-width:12px;min-height:12px}
+.pdf-image-editor-frame{position:absolute;left:0;top:0;width:210mm;height:297mm;overflow:hidden;z-index:999;pointer-events:auto;box-sizing:border-box;background:transparent;touch-action:none}
+.pdf-image-editor-box{position:absolute;box-sizing:border-box;border:2px solid #1976ff;cursor:grab;transform:translate(-50%,-50%);transform-origin:center center;touch-action:none;min-width:8mm;min-height:5mm;box-shadow:0 0 0 1px #fff8,0 3px 12px #1976ff33}
+.pdf-image-editor-box:active{cursor:grabbing}
 .pdf-image-editor-box img{display:block;width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none;-webkit-user-drag:none}
-.pdf-image-editor-box .h{position:absolute;width:11px;height:11px;background:#fff;border:2px solid #2d7cff;border-radius:50%;z-index:3;box-sizing:border-box}
+.pdf-image-editor-box .h{position:absolute;width:13px;height:13px;background:#fff;border:2px solid #1976ff;border-radius:50%;z-index:3;box-sizing:border-box;touch-action:none}
 .pdf-image-editor-box .nw{left:-8px;top:-8px;cursor:nwse-resize}.pdf-image-editor-box .n{left:50%;top:-8px;transform:translateX(-50%);cursor:ns-resize}.pdf-image-editor-box .ne{right:-8px;top:-8px;cursor:nesw-resize}.pdf-image-editor-box .e{right:-8px;top:50%;transform:translateY(-50%);cursor:ew-resize}.pdf-image-editor-box .se{right:-8px;bottom:-8px;cursor:nwse-resize}.pdf-image-editor-box .s{left:50%;bottom:-8px;transform:translateX(-50%);cursor:ns-resize}.pdf-image-editor-box .sw{left:-8px;bottom:-8px;cursor:nesw-resize}.pdf-image-editor-box .w{left:-8px;top:50%;transform:translateY(-50%);cursor:ew-resize}
 </style><script>(function(){
 const frame=document.getElementById('pdfImageEditorFrame'),box=document.getElementById('pdfImageEditorBox');if(!frame||!box)return;
-const INIT={x:${safeX},y:${safeY},w:${safeW},h:${safeH},z:${Number(imageZoom)||100}};
-let state=null;
+const INIT={x:${safeX},y:${safeY},w:${safeW},h:${safeH},z:${Number(imageZoom)||100}};let state=null;let current=Object.assign({},INIT);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function frameMetrics(){const r=frame.getBoundingClientRect();return {r, sx:r.width/200, sy:r.height/65};}
-function apply(v){
-  const w=clamp(Number(v.w)||100,8,100), h=clamp(Number(v.h)||100,8,100);
-  const x=Number(v.x)||0, y=Number(v.y)||0, z=clamp(Number(v.z)||100,50,300);
-  box.style.width=w+'%';box.style.height=h+'%';
-  box.style.left='calc(50% + '+x+'mm)';box.style.top='calc(50% + '+y+'mm)';
-  box.style.transform='translate(-50%,-50%) scale('+z/100+')';
-}
-function readState(){
-  const m=frameMetrics(), r=box.getBoundingClientRect();
-  const cx=r.left+r.width/2-(m.r.left+m.r.width/2), cy=r.top+r.height/2-(m.r.top+m.r.height/2);
-  return {x:cx/m.sx,y:cy/m.sy,w:(r.width/m.r.width)*100,h:(r.height/m.r.height)*100};
-}
-function send(v){parent.postMessage({type:'pdf-image-editor-change',x:v.x,y:v.y,w:v.w,h:v.h,z:v.z||100},'*');}
+function mm(){const r=frame.getBoundingClientRect();return {r,sx:r.width/210,sy:r.height/297};}
+function apply(v){current={x:clamp(Number(v.x)||105,0,210),y:clamp(Number(v.y)||247,0,297),w:clamp(Number(v.w)||24,8,180),h:clamp(Number(v.h)||10,5,250),z:clamp(Number(v.z)||100,50,300)};box.style.width=current.w+'mm';box.style.height=current.h+'mm';box.style.left=current.x+'mm';box.style.top=current.y+'mm';box.style.transform='translate(-50%,-50%) scale('+current.z/100+')';}
+function send(){parent.postMessage({type:'pdf-image-editor-change',x:current.x,y:current.y,w:current.w,h:current.h,z:current.z},'*');}
 window.addEventListener('message',e=>{if(e.data?.type==='pdf-image-sync')apply(e.data)});
-box.addEventListener('wheel',e=>{
-  e.preventDefault(); e.stopPropagation();
-  const cur=window.__pdfImageZoom||INIT.z||100;
-  const z=clamp(cur+(e.deltaY<0?10:-10),50,300);
-  window.__pdfImageZoom=z;
-  const curState=readState();
-  apply({x:curState.x,y:curState.y,w:curState.w,h:curState.h,z});
-  parent.postMessage({type:'pdf-image-editor-change',x:curState.x,y:curState.y,w:curState.w,h:curState.h,z},'*');
-},{passive:false});
-window.__pdfImageZoom=INIT.z||100;
-
-box.addEventListener('pointerdown',e=>{
-  e.preventDefault();e.stopPropagation();
-  const m=frameMetrics(), r=box.getBoundingClientRect(), handle=e.target.classList.contains('h')?[...e.target.classList].find(c=>/^(nw|n|ne|e|se|s|sw|w)$/.test(c)):'';
-  const cur=readState();
-  state={mode:handle?'resize':'move',handle,sx:e.clientX,sy:e.clientY,initial:cur,frame:m.r,pxX:m.sx,pxY:m.sy,startRect:r};
-  box.setPointerCapture?.(e.pointerId);
-});
-box.addEventListener('pointermove',e=>{
-  if(!state)return;
-  e.preventDefault();
-  const dx=(e.clientX-state.sx)/state.pxX, dy=(e.clientY-state.sy)/state.pxY;
-  let {x,y,w,h}=state.initial;
-  if(state.mode==='move'){
-    // Move ONLY changes x/y. Width and height remain exactly untouched.
-    x+=dx; y+=dy;
-    // Never allow the image to leave the marked safe area. Moving changes only X/Y.
-    x=clamp(x,-(200-w)/2,(200-w)/2);
-    y=clamp(y,-(65-h)/2,(65-h)/2);
-  }else{
-    const q=state.handle||'';
-    const frameW=200, frameH=90;
-    const left=x-w/2, right=x+w/2, top=y-h/2, bottom=y+h/2;
-    let L=left,R=right,T=top,B=bottom;
-    if(q.includes('w'))L=left+dx;if(q.includes('e'))R=right+dx;
-    if(q.includes('n'))T=top+dy;if(q.includes('s'))B=bottom+dy;
-    const minW=8,minH=8;
-    if(R-L<minW){if(q.includes('w'))L=R-minW;else R=L+minW;}
-    if(B-T<minH){if(q.includes('n'))T=B-minH;else B=T+minH;}
-    // Keep the object inside the marked frame while resizing.
-    const maxW=100,maxH=100;
-    w=clamp(R-L,minW,maxW);h=clamp(B-T,minH,maxH);
-    x=(L+R)/2;y=(T+B)/2;
-    x=clamp(x,-(frameW-w)/2,(frameW-w)/2);
-    y=clamp(y,-(frameH-h)/2,(frameH-h)/2);
-  }
-  apply({x,y,w,h});
-});
-function finish(){if(!state)return;const v=readState();send(v);state=null;}
-box.addEventListener('pointerup',finish);box.addEventListener('pointercancel',finish);box.addEventListener('lostpointercapture',()=>{if(state)finish()});
-apply(INIT);
+box.addEventListener('wheel',e=>{e.preventDefault();e.stopPropagation();current.z=clamp(current.z+(e.deltaY<0?10:-10),50,300);apply(current);send();},{passive:false});
+box.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();const h=[...e.target.classList].find(c=>/^(nw|n|ne|e|se|s|sw|w)$/.test(c))||'';const m=mm();state={mode:h?'resize':'move',handle:h,sx:e.clientX,sy:e.clientY,start:Object.assign({},current),pxX:m.sx,pxY:m.sy};box.setPointerCapture?.(e.pointerId);});
+box.addEventListener('pointermove',e=>{if(!state)return;e.preventDefault();const dx=(e.clientX-state.sx)/state.pxX,dy=(e.clientY-state.sy)/state.pxY;let {x,y,w,h,z}=state.start;if(state.mode==='move'){x+=dx;y+=dy;x=clamp(x,w/2,210-w/2);y=clamp(y,h/2,297-h/2);}else{const q=state.handle,L=x-w/2,R=x+w/2,T=y-h/2,B=y+h/2;let l=L,r=R,t=T,b=B;if(q.includes('w'))l=L+dx;if(q.includes('e'))r=R+dx;if(q.includes('n'))t=T+dy;if(q.includes('s'))b=B+dy;w=clamp(r-l,8,180);h=clamp(b-t,5,250);x=(l+r)/2;y=(t+b)/2;x=clamp(x,w/2,210-w/2);y=clamp(y,h/2,297-h/2);}apply({x,y,w,h,z});send();});
+function finish(){if(state){send();state=null;}}
+box.addEventListener('pointerup',finish);box.addEventListener('pointercancel',finish);box.addEventListener('lostpointercapture',finish);apply(INIT);
 })();<\/script>`;
   return html.replace('</body>',script+'</body>');
 }
+async function loadPDFImageLibrary(){
+  try{
+    const r=await fetch('/api/pdf-images');
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||'Image Library load failed');
+    pdfImageLibrary=d.images||[];
+    renderPDFImageLibrary();
+  }catch(e){
+    const box=$('pdfImageList');
+    if(box) box.innerHTML='<div class="history-empty">Image Library load করা যায়নি: '+escHtml(e.message)+'</div>';
+  }
+}
+function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderPDFImageLibrary(){
+  const box=$('pdfImageList'); if(!box)return;
+  $('pdfImageCount').textContent=pdfImageLibrary.length;
+  if(!pdfImageLibrary.length){box.innerHTML='<div class="history-empty">কোনো PDF Image নেই।</div>';return;}
+  box.innerHTML='';
+  pdfImageLibrary.forEach(img=>{
+    const item=document.createElement('div'); item.className='pdf-image-item'+(img.id===selectedPDFImageId?' selected':'');
+    item.title=img.hasImage?'Click করে Image select করুন':'Click করে Image upload করুন';
+    const visual=document.createElement(img.hasImage?'img':'div');
+    if(img.hasImage){visual.className='pdf-image-thumb';visual.alt=img.name;visual.src='/api/pdf-images/'+encodeURIComponent(img.id)+'?raw=1&v='+encodeURIComponent(img.updatedAt||Date.now());visual.onerror=()=>{visual.replaceWith(Object.assign(document.createElement('div'),{className:'pdf-image-icon',textContent:'🖼️'}));};}
+    else {visual.className='pdf-image-icon';visual.textContent='🖼️';}
+    const text=document.createElement('div'); text.className='pdf-image-name'; text.textContent=img.name;
+    const state=document.createElement('span'); state.className='pdf-image-state'; state.textContent=img.hasImage?(img.id===selectedPDFImageId?'✓ PDF-তে নির্বাচিত':'PDF-তে বসাতে ক্লিক করুন'):'Click করে Image upload করুন'; text.appendChild(state);
+    const check=document.createElement('span'); check.className='pdf-image-check'; check.textContent=img.id===selectedPDFImageId?'✓':'';
+    const rename=document.createElement('button'); rename.type='button'; rename.className='pdf-image-rename'; rename.textContent='✏️'; rename.title='Image-এর নাম পরিবর্তন'; rename.onclick=(ev)=>{ev.stopPropagation();renamePDFImage(img);};
+    item.append(visual,text,rename,check); item.onclick=()=>selectPDFImage(img); box.appendChild(item);
+  });
+  const selected=pdfImageLibrary.find(x=>x.id===selectedPDFImageId);
+  $('pdfImageSelected').textContent=selected?('Selected: '+selected.name):'কোনো Image নির্বাচিত হয়নি।';
+}
+async function renamePDFImage(img){
+  const next=prompt('নতুন Image / সীল-এর নাম লিখুন:', img?.name||'');
+  if(next===null)return;
+  const name=next.trim();
+  if(!name || name===img.name)return;
+  try{
+    const r=await fetch('/api/pdf-images/'+encodeURIComponent(img.id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+    const d=await r.json(); if(!r.ok||!d.ok)throw new Error(d.error||'নাম পরিবর্তন ব্যর্থ');
+    const i=pdfImageLibrary.findIndex(x=>x.id===img.id); if(i>=0)pdfImageLibrary[i]=d.image;
+    if(selectedPDFImageId===img.id)selectedPDFImageName=d.image.name;
+    renderPDFImageLibrary(); status('Image-এর নাম পরিবর্তন হয়েছে।','ok');
+  }catch(e){status('Image-এর নাম পরিবর্তন করা যায়নি: '+e.message,'err');}
+}
 
-
+function addPDFImageName(){
+  const input=$('pdfImageNameInput'); const name=input?.value.trim();
+  if(!name){status('আগে Image-এর নাম লিখুন।','err');return;}
+  createOrSelectPDFImage(name);
+}
+async function createOrSelectPDFImage(name){
+  try{
+    const existing=pdfImageLibrary.find(x=>x.name===name);
+    if(existing){ await selectPDFImage(existing); if(!existing.hasImage) openPDFImageUpload(existing.id); return; }
+    const r=await fetch('/api/pdf-images',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+    const d=await r.json(); if(!r.ok||!d.ok)throw new Error(d.error||'Image name create failed');
+    pdfImageLibrary.push(d.image); $('pdfImageNameInput').value=''; renderPDFImageLibrary();
+    await selectPDFImage(d.image); openPDFImageUpload(d.image.id);
+    status('“'+name+'” তৈরি হয়েছে। এখন Image upload করুন।','ok');
+  }catch(e){status('Image name তৈরি করা যায়নি: '+e.message,'err');}
+}
+async function selectPDFImage(img){
+  if(!img)return;
+  selectedPDFImageId=img.id; selectedPDFImageName=img.name; selectedPDFImageDataUrl=''; applyPDFImagePreset(img.defaultPosition); pdfBlob=null; if(pdfUrl){URL.revokeObjectURL(pdfUrl);pdfUrl=null;} pdfPreviewNeedsHistorySave=true; renderPDFImageLibrary();
+  if(!img.hasImage){ pendingPDFImageId=img.id; openPDFImageUpload(img.id); return; }
+  try{
+    const r=await fetch('/api/pdf-images/'+encodeURIComponent(img.id)+'?v='+encodeURIComponent(img.updatedAt||Date.now()), {cache:'no-store'}); const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Image পাওয়া যায়নি');
+    selectedPDFImageDataUrl=d.dataUrl||''; updatePDFImageAdjustUI(); status('“'+img.name+'” PDF-তে select হয়েছে।','ok');
+    if($('certPreview')?.style.display!=='none'){ await previewPDF({skipCharge:true}); }
+  }catch(e){selectedPDFImageId='';selectedPDFImageName='';selectedPDFImageDataUrl='';renderPDFImageLibrary();status('Image load ব্যর্থ: '+e.message,'err');}
+}
+function openPDFImageUpload(id){pendingPDFImageId=id;const input=$('pdfImageFileInput');if(input){input.value='';input.click();}}
+async function handlePDFImageUpload(event){
+  const file=event.target.files?.[0]; if(!file)return;
+  if(!/^image\/(png|jpeg|webp)$/i.test(file.type)){status('শুধু PNG, JPG/JPEG অথবা WEBP image upload করুন।','err');return;}
+  if(file.size>12*1024*1024){status('Image সর্বোচ্চ 12 MB হতে পারবে।','err');return;}
+  const image=pdfImageLibrary.find(x=>x.id===pendingPDFImageId); if(!image)return;
+  try{
+    const dataUrl=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=()=>reject(fr.error||new Error('File read failed'));fr.readAsDataURL(file);});
+    const r=await fetch('/api/pdf-images',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:image.id,name:image.name,dataUrl})});
+    const d=await r.json(); if(!r.ok||!d.ok)throw new Error(d.error||'Upload failed');
+    const idx=pdfImageLibrary.findIndex(x=>x.id===image.id); if(idx>=0)pdfImageLibrary[idx]=d.image;
+    selectedPDFImageId=image.id;selectedPDFImageName=image.name;selectedPDFImageDataUrl=dataUrl;applyPDFImagePreset(d.image.defaultPosition);pendingPDFImageId=''; pdfBlob=null; if(pdfUrl){URL.revokeObjectURL(pdfUrl); pdfUrl=null;} pdfPreviewNeedsHistorySave=true; updatePDFImageAdjustUI(); renderPDFImageLibrary();
+    status('“'+image.name+'” Image Server-এ permanently save হয়েছে এবং select হয়েছে।','ok');
+    // Immediately show the uploaded image in the already-open certificate preview.
+    if($('certPreview')?.style.display!=='none'){ await previewPDF({skipCharge:true}); }
+  }catch(e){status('Image upload ব্যর্থ: '+e.message,'err');}
+}
+async function ensureSelectedPDFImageData(){
+  if(!selectedPDFImageId)return '';
+  if(selectedPDFImageDataUrl)return selectedPDFImageDataUrl;
+  const r=await fetch('/api/pdf-images/'+encodeURIComponent(selectedPDFImageId)+'?v='+Date.now(), {cache:'no-store'}); const d=await r.json();
+  if(!r.ok||!d.ok)throw new Error(d.error||'Selected Image পাওয়া যায়নি।');
+  selectedPDFImageDataUrl=d.dataUrl||'';return selectedPDFImageDataUrl;
+}
 
 function scrollToPdfImage(){const el=document.querySelector('.pdf-image-panel'); if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}}
 function scrollToPdfHistory(){const el=document.querySelector('.history-panel'); if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}}
@@ -354,6 +399,66 @@ function getNormalized(value) {
   return String(value ?? "").toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/g, "");
 }
 
+function resolveGeoParentsForAutoFill(data, fields){
+  try{
+    if(typeof geoExtractAddress!=='function') return data;
+    const sourceParts=[];
+    for(const item of (Array.isArray(fields)?fields:[])){
+      sourceParts.push(String(item?.label||''), String(item?.value||''), String(item?.englishLabel||''), String(item?.englishValue||''));
+    }
+    sourceParts.push(String(data?.pobBn||''), String(data?.pobEn||''));
+    const raw=sourceParts.filter(Boolean).join('\n');
+    if(!raw) return data;
+    const parsed=geoExtractAddress(raw);
+    let district=parsed?.district||'';
+    let upazila=parsed?.upazila||'';
+    let union=parsed?.union||'';
+
+    // If only an upazila is visible, resolve its parent district from Geo Data.
+    let districtObj=geoFindDistrict(district);
+    if(!districtObj && upazila){
+      const hits=[];
+      for(const d0 of (ADDRESS_GEO_DATA?.districts||[])){
+        const u0=geoFindUpazila(upazila,d0);
+        if(u0) hits.push([d0,u0]);
+      }
+      if(hits.length===1){ districtObj=hits[0][0]; upazila=hits[0][1].bn; }
+    }
+
+    // If only a union is visible, resolve it inside the known district/upazila.
+    if(!districtObj && union){
+      const hits=[];
+      for(const d0 of (ADDRESS_GEO_DATA?.districts||[])){
+        for(const u0 of (d0.upazilas||[])){
+          const un0=geoFindUnion(union,u0);
+          if(un0) hits.push([d0,u0,un0]);
+        }
+      }
+      if(hits.length===1){ districtObj=hits[0][0]; upazila=hits[0][1].bn; union=hits[0][2].bn; }
+    } else if(districtObj && union && !upazila){
+      for(const u0 of (districtObj.upazilas||[])){
+        const un0=geoFindUnion(union,u0);
+        if(un0){ upazila=u0.bn; union=un0.bn; break; }
+      }
+    }
+
+    if(districtObj) district=districtObj.bn;
+    // Never invent an unrelated first upazila. Only fill what Geo Data can resolve.
+    if(!data.upazilaPouroshavaUnion && (upazila||district)){
+      data.upazilaPouroshavaUnion=[upazila,district].filter(Boolean).join(' ').trim();
+    }
+    if(!data.pobBn && (parsed?.villageBn||parsed?.postOfficeBn||district||upazila||union)){
+      const parts=[parsed?.villageBn, parsed?.postOfficeBn, upazila, district].filter(Boolean);
+      if(parts.length) data.pobBn=parts.join(', ');
+    }
+    if(!data.pobEn && (parsed?.villageEn||parsed?.postOfficeEn||upazila||district||union)){
+      const parts=[parsed?.villageEn, parsed?.postOfficeEn, upazila, district].filter(Boolean);
+      if(parts.length) data.pobEn=parts.join(', ');
+    }
+    return data;
+  }catch(_){ return data; }
+}
+
 async function fill(d) {
   // Never let an unresolved Promise leak into an input as "[object Promise]".
   d = await Promise.resolve(d);
@@ -369,6 +474,7 @@ async function fill(d) {
   const rowValueBn = (...labels) => findRow(...labels)?.value || "";
   const rowValueEn = (...labels) => findRow(...labels)?.englishValue || findRow(...labels)?.value || "";
   const dob = formatDateDDMMYYYY(d?.dob || "");
+  d = resolveGeoParentsForAutoFill(d, fields) || d;
   const resolved = {};
   for (const [key, value] of Object.entries(d || {})) {
     resolved[key] = await Promise.resolve(value);
@@ -631,7 +737,7 @@ function clearForm(){
  selectedPDFImageDataUrl = "";
  $('in_deathCauseBn') && ($('in_deathCauseBn').value=''); $('in_deathCauseEn') && ($('in_deathCauseEn').value=''); $('in_deathCauseBnSelect') && ($('in_deathCauseBnSelect').value=''); $('in_deathCauseEnSelect') && ($('in_deathCauseEnSelect').value=''); $('in_deathCauseBn') && ($('in_deathCauseBn').style.display='none'); $('in_deathCauseEn') && ($('in_deathCauseEn').style.display='none');
  setRegistrationMode('birth');
- imagePositionX = 0; imagePositionY = 0; imageZoom = 100; imageWidth = 100; imageHeight = 100;
+ imagePositionX = 105; imagePositionY = 247; imageZoom = 100; imageWidth = 24; imageHeight = 10;
  updatePDFImageAdjustUI();
  renderPDFImageLibrary();
  if ($("qrLink")) $("qrLink").value = "";
@@ -920,6 +1026,7 @@ async function saveCurrentPDFToHistory() {
     imageZoom,
     imageWidth,
     imageHeight,
+    imageCoordinateMode:'page-mm',
     pdfBlob
   };
   await putPDFHistory(record);
@@ -945,11 +1052,14 @@ async function editPDFHistory(id) {
     currentQRLabel = record.qrLabel || '';
     selectedPDFImageId = record.selectedPDFImageId || '';
     selectedPDFImageName = record.selectedPDFImageName || '';
-    imagePositionX = Number(record.imagePositionX ?? 0);
-    imagePositionY = Number(record.imagePositionY ?? 0);
-    imageZoom = Number(record.imageZoom ?? 100);
-    imageWidth = Number(record.imageWidth ?? 100);
-    imageHeight = Number(record.imageHeight ?? 100);
+    if(record.imageCoordinateMode==='page-mm'){
+      imagePositionX = Number(record.imagePositionX ?? 105); imagePositionY = Number(record.imagePositionY ?? 247);
+      imageZoom = Number(record.imageZoom ?? 100); imageWidth = Number(record.imageWidth ?? 24); imageHeight = Number(record.imageHeight ?? 10);
+    }else{
+      imagePositionX = Math.max(0,Math.min(210,105+Number(record.imagePositionX||0)));
+      imagePositionY = Math.max(0,Math.min(297,247+Number(record.imagePositionY||0)));
+      imageZoom = Number(record.imageZoom ?? 100); imageWidth = Math.max(8,Math.min(180,Number(record.imageWidth||24))); imageHeight = Math.max(5,Math.min(250,Number(record.imageHeight||10)));
+    }
     selectedPDFImageDataUrl = '';
     if(selectedPDFImageId){ try { await ensureSelectedPDFImageData(); } catch(_) {} }
     renderPDFImageLibrary();
@@ -1193,8 +1303,8 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .sex-container-fixed { position: relative !important; left: 1mm !important; top: 0 !important; margin: 0 !important; padding: 0 !important; white-space: nowrap !important; text-align: left !important; }
 .footer-signatures { position: absolute; bottom: 47mm; left: 22mm; right: 22mm; width: calc(100% - 44mm); z-index: 1; }
 .sig-table { width: 100%; border-collapse: collapse; border: none; }
-.pdf-image-overlay { position: absolute; left: 5mm; bottom: 5mm; width: 200mm; height: 90mm; overflow: hidden; pointer-events: none; z-index: 100; display: flex; align-items: center; justify-content: center; }
-.pdf-image-overlay img { display: block; width: ${Number(imageWidth||100)}%; height: ${Number(imageHeight||100)}%; max-width: none; max-height: none; object-fit: fill; transform-origin: center center; transform: translate(${Number(imagePositionX||0)}mm, ${Number(imagePositionY||0)}mm) scale(${Number(imageZoom||100)/100}); }
+.pdf-image-overlay { position:absolute; left:0; top:0; width:210mm; height:297mm; overflow:hidden; pointer-events:none; z-index:100; }
+.pdf-image-overlay img { position:absolute; left:${Number(imagePositionX||105)}mm; top:${Number(imagePositionY||247)}mm; width:${Number(imageWidth||24)}mm; height:${Number(imageHeight||10)}mm; max-width:none; max-height:none; object-fit:fill; transform-origin:center center; transform:translate(-50%,-50%) scale(${Number(imageZoom||100)/100}); }
 .sig-table td { width: 50%; text-align: center; font-size: 11pt; vertical-align: top; border: none; }
 .sig-left-shift { position: relative; left: -12mm; line-height: 1.6 !important; }
 .sig-right-shift { position: relative; left: 18mm; line-height: 1.6 !important; }
