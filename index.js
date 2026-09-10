@@ -38,68 +38,13 @@ const AUTH_FILE = path.join(AUTH_DIR, 'users.json');
 fs.mkdirSync(AUTH_DIR, { recursive: true });
 function hashPassword(password){return crypto.createHash('sha256').update(String(password)).digest('hex');}
 function authSecret(){return crypto.createHash('sha256').update(String(process.env.AUTH_SECRET||process.env.ADMIN_PASSWORD||'BDRIS-AUTO-FILL-AUTH-SECRET')).digest();}
-function sealUserPayload(user){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',authSecret(),iv);const plain=Buffer.from(JSON.stringify({id:user.id,username:user.username,name:user.name||'',passwordHash:user.passwordHash,accessToken:user.accessToken,enabled:user.enabled!==false,createdAt:user.createdAt||Date.now(),balance:Number(user.balance)||0,previewRate:Number.isFinite(Number(user.previewRate))&&Number(user.previewRate)>=0?Number(user.previewRate):4}),'utf8');const enc=Buffer.concat([cipher.update(plain),cipher.final()]);const tag=cipher.getAuthTag();return Buffer.concat([iv,tag,enc]).toString('base64url');}
+function sealUserPayload(user){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',authSecret(),iv);const plain=Buffer.from(JSON.stringify({id:user.id,username:user.username,name:user.name||'',passwordHash:user.passwordHash,accessToken:user.accessToken,enabled:user.enabled!==false,createdAt:user.createdAt||Date.now(),balance:Number(user.balance)||0}),'utf8');const enc=Buffer.concat([cipher.update(plain),cipher.final()]);const tag=cipher.getAuthTag();return Buffer.concat([iv,tag,enc]).toString('base64url');}
 function openUserPayload(value){try{const b=Buffer.from(String(value||''),'base64url');if(b.length<28)return null;const decipher=crypto.createDecipheriv('aes-256-gcm',authSecret(),b.subarray(0,12));decipher.setAuthTag(b.subarray(12,28));return JSON.parse(Buffer.concat([decipher.update(b.subarray(28)),decipher.final()]).toString('utf8'));}catch(_){return null;}}
 function loadAuthStore(){try{return JSON.parse(fs.readFileSync(AUTH_FILE,'utf8'));}catch(_){const store={users:[],admin:{username:process.env.ADMIN_USERNAME||'admin',passwordHash:hashPassword(process.env.ADMIN_PASSWORD||'change-this-admin-password')}};fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));return store;}}
 function saveAuthStore(store){fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));}
 const authStore=loadAuthStore();
-for(const u of (authStore.users||[])){
-  if(!Number.isFinite(Number(u.balance))) u.balance=0;
-  if(!Number.isFinite(Number(u.previewRate))||Number(u.previewRate)<0) u.previewRate=4;
-  if(u.enabled===undefined) u.enabled=true;
-  if(!Array.isArray(u.balanceHistory)) u.balanceHistory=[];
-  if(!u.birthRegNo) u.birthRegNo='';
-  if(!u.birthDateBn) u.birthDateBn='';
-  if(!u.birthDateEn) u.birthDateEn='';
-  if(!u.nameBn) u.nameBn=u.name||'';
-  if(!u.nameEn) u.nameEn='';
-}
+for(const u of (authStore.users||[])){ if(!Number.isFinite(Number(u.balance))) u.balance=0; }
 saveAuthStore(authStore);
-
-// Optional persistent PostgreSQL storage. When DATABASE_URL is configured (Render Postgres),
-// user/balance data survives deploys and restarts. JSON remains a local fallback only.
-let dbPool=null;
-try { const {Pool}=require('pg'); if(process.env.DATABASE_URL) dbPool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes('localhost')?false:{rejectUnauthorized:false},max:5}); }
-catch(err){ console.warn('PostgreSQL driver unavailable; using local JSON fallback.',err.message); }
-async function initPersistentDb(){
-  if(!dbPool) return;
-  await dbPool.query(`CREATE TABLE IF NOT EXISTS bdris_users (
-    id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT DEFAULT '', name_bn TEXT DEFAULT '', name_en TEXT DEFAULT '',
-    password_hash TEXT NOT NULL, access_token TEXT UNIQUE NOT NULL, enabled BOOLEAN DEFAULT TRUE, device_id TEXT DEFAULT '',
-    created_at BIGINT, last_login_at BIGINT, balance NUMERIC(14,2) DEFAULT 0, preview_rate NUMERIC(14,2) DEFAULT 4,
-    birth_reg_no TEXT DEFAULT '', birth_date_bn TEXT DEFAULT '', birth_date_en TEXT DEFAULT ''
-  )`);
-  await dbPool.query(`CREATE TABLE IF NOT EXISTS bdris_balance_history (
-    id BIGSERIAL PRIMARY KEY, user_id TEXT NOT NULL, change_amount NUMERIC(14,2) NOT NULL, balance_after NUMERIC(14,2) NOT NULL,
-    action TEXT NOT NULL, note TEXT DEFAULT '', created_at BIGINT NOT NULL
-  )`);
-  const r=await dbPool.query('SELECT * FROM bdris_users ORDER BY created_at ASC');
-  if(r.rows.length){
-    authStore.users=r.rows.map(x=>({id:x.id,username:x.username,name:x.name||'',nameBn:x.name_bn||'',nameEn:x.name_en||'',passwordHash:x.password_hash,accessToken:x.access_token,enabled:x.enabled!==false,deviceId:x.device_id||'',createdAt:Number(x.created_at)||Date.now(),lastLoginAt:x.last_login_at?Number(x.last_login_at):null,balance:Number(x.balance)||0,previewRate:Number(x.preview_rate)>=0?Number(x.preview_rate):4,birthRegNo:x.birth_reg_no||'',birthDateBn:x.birth_date_bn||'',birthDateEn:x.birth_date_en||'',balanceHistory:[]}));
-    saveAuthStore(authStore);
-  } else if(authStore.users.length){ await persistAllUsers(); }
-}
-async function persistAllUsers(){
-  if(!dbPool) return;
-  const client=await dbPool.connect();
-  try{
-    await client.query('BEGIN');
-    for(const u of authStore.users){
-      await client.query(`INSERT INTO bdris_users(id,username,name,name_bn,name_en,password_hash,access_token,enabled,device_id,created_at,last_login_at,balance,preview_rate,birth_reg_no,birth_date_bn,birth_date_en)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-      ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username,name=EXCLUDED.name,name_bn=EXCLUDED.name_bn,name_en=EXCLUDED.name_en,password_hash=EXCLUDED.password_hash,access_token=EXCLUDED.access_token,enabled=EXCLUDED.enabled,device_id=EXCLUDED.device_id,last_login_at=EXCLUDED.last_login_at,balance=EXCLUDED.balance,preview_rate=EXCLUDED.preview_rate,birth_reg_no=EXCLUDED.birth_reg_no,birth_date_bn=EXCLUDED.birth_date_bn,birth_date_en=EXCLUDED.birth_date_en`,[u.id,u.username,u.name||'',u.nameBn||'',u.nameEn||'',u.passwordHash,u.accessToken,u.enabled!==false,u.deviceId||'',u.createdAt||Date.now(),u.lastLoginAt||null,Number(u.balance)||0,Number(u.previewRate)>=0?Number(u.previewRate):4,u.birthRegNo||'',u.birthDateBn||'',u.birthDateEn||'']);
-    }
-    await client.query('COMMIT');
-  }catch(e){await client.query('ROLLBACK'); console.error('Persistent user save failed:',e.message)} finally{client.release();}
-}
-function persistUsers(){ return dbPool ? persistAllUsers() : Promise.resolve(); }
-function persistUsersSoon(){ persistUsers().catch(e=>console.error('DB persist error:',e.message)); }
-async function recordBalanceHistory(user, change, action, note=''){
-  const entry={change:Number(change)||0,balanceAfter:Number(user.balance)||0,action,note,createdAt:Date.now()};
-  user.balanceHistory=Array.isArray(user.balanceHistory)?user.balanceHistory:[]; user.balanceHistory.unshift(entry); user.balanceHistory=user.balanceHistory.slice(0,100);
-  if(dbPool){ try{await dbPool.query('INSERT INTO bdris_balance_history(user_id,change_amount,balance_after,action,note,created_at) VALUES($1,$2,$3,$4,$5,$6)',[user.id,entry.change,entry.balanceAfter,entry.action,entry.note,entry.createdAt]);}catch(e){console.error('Balance history save failed:',e.message)} }
-}
-
 const authSessions=new Map();
 app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now()}));
 app.get('/api/runtime/browser',(req,res)=>res.json({ok:true,cacheDir:process.env.PUPPETEER_CACHE_DIR,serviceDir:__dirname,node:process.version}));
@@ -131,7 +76,7 @@ if(changedDefaultImages) savePDFImageLibrary(pdfImageStore);
 function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
-app.post('/api/auth/login',(req,res)=>{const {username,password,accessToken,deviceId,userId,auth}=req.body||{};if(!username||!password||!accessToken||!deviceId)return res.status(400).json({ok:false,error:'Username, password, access link এবং device তথ্য প্রয়োজন।'});let user=authStore.users.find(u=>u.accessToken===accessToken);if(!user&&userId)user=authStore.users.find(u=>u.id===String(userId));if(auth){const r=openUserPayload(auth);if(r&&r.accessToken===accessToken&&r.id===String(userId||r.id)&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){const stored=authStore.users.find(u=>u.id===r.id);if(stored){user=stored;}else{user={...r,deviceId:'',lastLoginAt:null,balance:Number(r.balance)||0,previewRate:Number.isFinite(Number(r.previewRate))&&Number(r.previewRate)>=0?Number(r.previewRate):4};}const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}if(!user||!user.enabled)return res.status(403).json({ok:false,error:'এই access link সক্রিয় নেই।'});if(user.username!==username||user.passwordHash!==hashPassword(password))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই access link অন্য একটি device-এর সাথে যুক্ত আছে।'});if(!user.deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);persistUsersSoon();const token=newToken();authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken,createdAt:Date.now()});res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});});
+app.post('/api/auth/login',(req,res)=>{const {username,password,accessToken,deviceId,userId,auth}=req.body||{};if(!username||!password||!accessToken||!deviceId)return res.status(400).json({ok:false,error:'Username, password, access link এবং device তথ্য প্রয়োজন।'});let user=authStore.users.find(u=>u.accessToken===accessToken);if(!user&&userId)user=authStore.users.find(u=>u.id===String(userId));if(auth){const r=openUserPayload(auth);if(r&&r.accessToken===accessToken&&r.id===String(userId||r.id)&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){const stored=authStore.users.find(u=>u.id===r.id);user={...(stored||{}),...r,deviceId:stored?.deviceId||'',lastLoginAt:stored?.lastLoginAt||null,balance:Number(r.balance)||0};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}if(!user||!user.enabled)return res.status(403).json({ok:false,error:'এই access link সক্রিয় নেই।'});if(user.username!==username||user.passwordHash!==hashPassword(password))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই access link অন্য একটি device-এর সাথে যুক্ত আছে।'});if(!user.deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken,createdAt:Date.now()});res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});});
 app.post('/api/auth/admin-login',(req,res)=>{const {username,password}=req.body||{};if(username!==authStore.admin.username||hashPassword(password||'')!==authStore.admin.passwordHash)return res.status(401).json({ok:false,error:'Admin username বা password ভুল।'});const token=newToken();authSessions.set(token,{kind:'admin',username,createdAt:Date.now()});res.json({ok:true,token});});
 function requireAuth(req,res,next){const session=authUser(req);if(!session)return res.status(401).json({ok:false,error:'Login required.'});req.auth=session;next();}
 function requireAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='admin')return res.status(403).json({ok:false,error:'Admin access required.'});req.auth=session;next();}
@@ -139,40 +84,23 @@ app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth
   const user=authStore.users.find(u=>u.id===req.auth.userId);
   if(!user) return res.status(404).json({ok:false,error:'User not found.'});
   if(!Number.isFinite(Number(user.balance))) user.balance=0;
-  res.json({ok:true,balance:Number(user.balance),previewRate:Number.isFinite(Number(user.previewRate))&&Number(user.previewRate)>=0?Number(user.previewRate):4,auth:sealUserPayload(user)});
+  res.json({ok:true,balance:Number(user.balance),auth:sealUserPayload(user)});
 });
-app.post('/api/balance/charge',requireAuth,async(req,res)=>{
+app.post('/api/balance/charge',requireAuth,(req,res)=>{
   const user=authStore.users.find(u=>u.id===req.auth.userId);
   if(!user) return res.status(404).json({ok:false,error:'User not found.'});
-  const amount=Math.max(0,Number.isFinite(Number(user.previewRate))?Number(user.previewRate):4);
+  const amount=4;
   user.balance=Number(user.balance)||0;
-  if(user.balance < amount) return res.status(402).json({ok:false,error:`Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳${amount}।`,balance:user.balance,required:amount,previewRate:amount});
+  if(user.balance < amount) return res.status(402).json({ok:false,error:'Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳4।',balance:user.balance,required:amount});
   user.balance=Math.round((user.balance-amount)*100)/100;
   saveAuthStore(authStore);
-  await recordBalanceHistory(user,-amount,'preview_charge','Certificate Preview charge');
-  await persistUsers();
-  res.json({ok:true,balance:user.balance,charged:amount,previewRate:amount,auth:sealUserPayload(user)});
+  res.json({ok:true,balance:user.balance,charged:amount,auth:sealUserPayload(user)});
 });
 
 app.get('/api/admin/users',requireAdmin,(req,res)=>res.json({ok:true,users:authStore.users.map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})}));
-app.post('/api/admin/users',requireAdmin,async(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:4,birthRegNo:'',birthDateBn:'',birthDateEn:'',nameBn:name||'',nameEn:'',balanceHistory:[]};authStore.users.push(user);saveAuthStore(authStore);await persistUsers();const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
-app.patch('/api/admin/users/:id',requireAdmin,async (req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});
-if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;
-if(req.body.resetDevice)user.deviceId='';
-if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);
-if(req.body.name!==undefined)user.name=String(req.body.name||'');
-if(req.body.nameBn!==undefined)user.nameBn=String(req.body.nameBn||'');
-if(req.body.nameEn!==undefined)user.nameEn=String(req.body.nameEn||'');
-if(req.body.birthRegNo!==undefined)user.birthRegNo=String(req.body.birthRegNo||'');
-if(req.body.birthDateBn!==undefined)user.birthDateBn=String(req.body.birthDateBn||'');
-if(req.body.birthDateEn!==undefined)user.birthDateEn=String(req.body.birthDateEn||'');
-if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});const old=Number(user.balance)||0;user.balance=Math.round(n*100)/100;await recordBalanceHistory(user,user.balance-old,'admin_set_balance','Admin Set Balance');}
-if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;await recordBalanceHistory(user,n,'admin_add_balance','Admin Add Balance');}
-if(req.body.setPreviewRate!==undefined){const n=Number(req.body.setPreviewRate);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid preview rate.'});user.previewRate=Math.round(n*100)/100;}
-saveAuthStore(authStore);persistUsersSoon();const {passwordHash,...safe}=user;safe.auth=sealUserPayload(user);res.json({ok:true,user:safe});});
-app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);if(dbPool) dbPool.query('DELETE FROM bdris_users WHERE id=$1',[req.params.id]).catch(e=>console.error(e.message));res.json({ok:true});});
-app.get('/api/admin/users/search',requireAdmin,(req,res)=>{const q=String(req.query.q||'').trim().toLowerCase();const users=authStore.users.filter(u=>!q||[u.name,u.username,u.nameBn,u.nameEn,u.birthRegNo,u.birthDateBn,u.birthDateEn].some(v=>String(v||'').toLowerCase().includes(q))).map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;});res.json({ok:true,users});});
-app.get('/api/admin/users/:id/balance-history',requireAdmin,async(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(dbPool){try{const r=await dbPool.query('SELECT change_amount,balance_after,action,note,created_at FROM bdris_balance_history WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 200',[user.id]);return res.json({ok:true,history:r.rows.map(x=>({change:Number(x.change_amount),balanceAfter:Number(x.balance_after),action:x.action,note:x.note,createdAt:Number(x.created_at)}))});}catch(e){return res.status(500).json({ok:false,error:e.message});}}res.json({ok:true,history:Array.isArray(user.balanceHistory)?user.balanceHistory:[]});});
+app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
+app.patch('/api/admin/users/:id',requireAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;safe.auth=sealUserPayload(user);res.json({ok:true,user:safe});});
+app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);res.json({ok:true});});
 app.use('/api',(req,res,next)=>{if(req.path.startsWith('/auth/'))return next();return requireAuth(req,res,next);});
 
 
@@ -1576,4 +1504,27 @@ const port =
     process.env.PORT || 3000;
 
 
-(async()=>{try{await initPersistentDb();console.log(dbPool?'💾 Persistent PostgreSQL storage: ENABLED':'💾 Persistent PostgreSQL storage: not configured (JSON fallback)');}catch(e){console.error('PostgreSQL init failed; continuing with JSON fallback:',e.message);dbPool=null;}app.listen(port,'0.0.0.0',()=>{console.log('');console.log('==========================================');console.log('🚀 BDRIS SMART AUTO FILL READY');console.log('==========================================');console.log(`🌐 Local: http://localhost:${port}`);console.log(`📱 Same-device: http://127.0.0.1:${port}`);console.log('');});})();
+app.listen(
+    port,
+    '0.0.0.0',
+    () => {
+
+        console.log('');
+        console.log(
+            '=========================================='
+        );
+        console.log(
+            '🚀 BDRIS SMART AUTO FILL READY'
+        );
+        console.log(
+            '=========================================='
+        );
+        console.log(
+            `🌐 Local: http://localhost:${port}`
+        );
+        console.log(`📱 Same-device: http://127.0.0.1:${port}`);
+        console.log('ℹ️ If running on a PC, open the PC LAN IP from the phone.');
+        console.log('');
+
+    }
+);

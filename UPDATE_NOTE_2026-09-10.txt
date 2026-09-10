@@ -1,0 +1,27 @@
+BALANCE_ZERO_FIXED additive update — 2026-09-10
+
+BASE:
+BDRIS_AutoFill_BALANCE_ZERO_FIXED.zip
+
+IMPORTANT:
+The original project was used as the base. Existing files/functions were not replaced.
+Only index.html was changed; all other project files are byte-for-byte unchanged.
+
+ADDITIVE FIXES:
+1) Preview billing guard:
+   - A newly fetched certificate is charged only on the first Preview in that session.
+   - Repeated Preview does not charge again.
+   - History Edit + Preview does not charge again.
+   - Clear/new fetched data starts a new billing session.
+   - Download remains without a separate charge.
+
+2) Mobile manual DOB:
+   - Visible DOB input now uses text + numeric mobile keyboard hints.
+   - Accepts DD/MM/YYYY and existing YYYY-MM-DD conversion logic remains intact.
+   - Hidden birthDate and In Word are synchronized after a valid manual DOB entry.
+   - No font size/weight or existing UI styling was changed.
+
+NOT INCLUDED:
+- No replacement of the existing UI, animations, PDF preview, or image editor.
+- No official seal/signature auto-placement was added.
+- No later V2/V3/V4/V5/V6 code was used as a base.

@@ -586,7 +586,7 @@ body:not(.login-locked) #chatButton,body:not(.login-locked) .chat-button,body:no
 <body class="login-locked"><div id="loginScreen"><div class="login-brand"><div class="login-brand-mark">🔒</div><div>BDRIS<small>BRT MAK</small></div></div><div class="login-grid"><section class="lamp-stage"><div class="lamp-glow"></div><div class="lamp-platform"></div><div class="walking-person" aria-hidden="true"><div class="person-head"></div><div class="person-hair"></div><div class="person-body"></div><div class="person-arm back"></div><div class="person-arm pointing"></div><div class="person-hand"></div><div class="person-leg left"></div><div class="person-leg right"></div><div class="person-shoe shoe-left"></div><div class="person-shoe shoe-right"></div></div><div class="lamp"><div class="lamp-shade"></div><div class="lamp-light"></div><div class="lamp-face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"><span class="tongue"></span></span></div><div class="lamp-pole"></div><div class="lamp-base"></div><div class="pull-rope"></div></div></section><section class="login-card"><div class="login-icon">♙</div><h2>Welcome Back</h2><div class="subtitle">Login to your account</div><form id="loginForm"><div class="login-field"><label>USERNAME</label><input id="loginUsername" autocomplete="username" placeholder="Enter your username" required><span class="field-icon">♙</span></div><div class="login-field"><label>PASSWORD</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><span class="field-icon">🔒</span></div><div class="login-options"><label class="remember"><input type="checkbox" checked> Remember me</label><span>Secure Access</span></div><button class="login-btn" id="loginBtn" type="submit">LOGIN&nbsp;&nbsp;→</button><div class="login-message" id="loginMessage"></div></form><div class="secure-note">🔐 <span>Secure</span> • <span>Private</span> • <span>Protected</span></div></section></div></div><div id="appShell"><div class="wrap">
 <div class="app-head"><div class="app-brand"><img class="app-logo" src="govt-logo.png" alt="BDRIS"><div><h1>BDRIS</h1><p class="brand-en">Birt Certified Mak</p></div></div><div class="online-pill"><span></span> System Online</div></div>
 <p class="sub">জন্ম নিবন্ধন নাম্বার আর জন্ম তারিখ দিয়ে Sertifiket Mak করুন</p>
-<div id="userBalanceBar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;margin:10px 0;border:1px solid #29432a;border-radius:12px;background:#07140d;color:#dcebd7"><b>💰 Balance: <span id="userBalance">৳0</span> <span style="opacity:.75;font-size:12px">• Preview ৳<span id="userPreviewRate">4</span></span></b><a href="https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge" target="_blank" rel="noopener" style="color:#7bea5b;text-decoration:none;font-weight:700">💬 Payment Recharge</a></div>
+<div id="userBalanceBar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;margin:10px 0;border:1px solid #29432a;border-radius:12px;background:#07140d;color:#dcebd7"><b>💰 Balance: <span id="userBalance">৳0</span></b><a href="https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge" target="_blank" rel="noopener" style="color:#7bea5b;text-decoration:none;font-weight:700">💬 Payment Recharge</a></div>
 
 <!-- ইনপুট সেকশন -->
 <div class="search-fields-stack" style="margin-bottom:15px; background:#f4f6f8; padding:15px; border-radius:8px;">
@@ -726,7 +726,8 @@ let currentSessionId = null;
 let mathCaptchaA = 0, mathCaptchaB = 0, mathCaptchaOp = '+';
 let mathCaptchaSolved = false;
 let currentData = null;
- previewChargedForCurrentCertificate = false;
+// Additive billing guard: a newly fetched certificate is charged once per preview session.
+let previewChargedForCurrentCertificate = false;
 let pdfBlob = null;
 let pdfUrl = null;
 let currentQRImage = "";
@@ -752,7 +753,6 @@ let imageWidth = 100;
 let imageHeight = 100;
 let pdfPreviewRefreshTimer = null;
 let pdfPreviewNeedsHistorySave = false;
-let previewChargedForCurrentCertificate = false;
 
 function updatePDFImageAdjustUI(){
   const panel=$('pdfImageAdjust');
@@ -786,17 +786,17 @@ function buildInteractivePreviewHtml(baseHtml){
   const html=baseHtml.replace(/<div class="pdf-image-overlay">[\s\S]*?<\/div>/, editor);
   const fitStyle='<style id="mobile-a4-fit">html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important;width:210mm!important;height:297mm!important;}body{transform-origin:top left!important;}</style><scr'+'ipt>(function(){function fit(){const target=793.7008;const s=Math.min(1,Math.max(.01,window.innerWidth/target));document.body.style.transform="scale("+s+")";document.documentElement.style.height=(297*s)+"mm";}fit();window.addEventListener("resize",fit);})();</scr'+'ipt>';
   const script=`<style>
-.pdf-image-editor-frame{position:absolute;left:5mm;bottom:5mm;width:200mm;height:90mm;overflow:hidden;z-index:50;pointer-events:auto;box-sizing:border-box;background:transparent;touch-action:none;-webkit-user-select:none;user-select:none}
+.pdf-image-editor-frame{position:absolute;left:5mm;bottom:5mm;width:200mm;height:90mm;overflow:hidden;z-index:50;pointer-events:auto;box-sizing:border-box;background:transparent}
 .pdf-image-editor-box{position:absolute;left:50%;top:50%;box-sizing:border-box;border:2px solid #2d7cff;cursor:move;transform:translate(-50%,-50%);transform-origin:center center;touch-action:none;min-width:12px;min-height:12px}
 .pdf-image-editor-box img{display:block;width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none;-webkit-user-drag:none}
-.pdf-image-editor-box .h{position:absolute;width:16px;height:16px;background:#fff;border:2px solid #2d7cff;border-radius:50%;z-index:3;box-sizing:border-box}
+.pdf-image-editor-box .h{position:absolute;width:11px;height:11px;background:#fff;border:2px solid #2d7cff;border-radius:50%;z-index:3;box-sizing:border-box}
 .pdf-image-editor-box .nw{left:-8px;top:-8px;cursor:nwse-resize}.pdf-image-editor-box .n{left:50%;top:-8px;transform:translateX(-50%);cursor:ns-resize}.pdf-image-editor-box .ne{right:-8px;top:-8px;cursor:nesw-resize}.pdf-image-editor-box .e{right:-8px;top:50%;transform:translateY(-50%);cursor:ew-resize}.pdf-image-editor-box .se{right:-8px;bottom:-8px;cursor:nwse-resize}.pdf-image-editor-box .s{left:50%;bottom:-8px;transform:translateX(-50%);cursor:ns-resize}.pdf-image-editor-box .sw{left:-8px;bottom:-8px;cursor:nesw-resize}.pdf-image-editor-box .w{left:-8px;top:50%;transform:translateY(-50%);cursor:ew-resize}
 </style><script>(function(){
 const frame=document.getElementById('pdfImageEditorFrame'),box=document.getElementById('pdfImageEditorBox');if(!frame||!box)return;
 const INIT={x:${safeX},y:${safeY},w:${safeW},h:${safeH},z:${Number(imageZoom)||100}};
 let state=null;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function frameMetrics(){const r=frame.getBoundingClientRect();return {r, sx:r.width/200, sy:r.height/90};}
+function frameMetrics(){const r=frame.getBoundingClientRect();return {r, sx:r.width/200, sy:r.height/65};}
 function apply(v){
   const w=clamp(Number(v.w)||100,8,100), h=clamp(Number(v.h)||100,8,100);
   const x=Number(v.x)||0, y=Number(v.y)||0, z=clamp(Number(v.z)||100,50,300);
@@ -1365,6 +1365,7 @@ function clearForm(){
  $("certPreview").style.display = "none";
  currentSessionId = null;
  currentData = null;
+ previewChargedForCurrentCertificate = false;
  currentQRImage = "";
  selectedPDFImageId = "";
  selectedPDFImageName = "";
@@ -1681,6 +1682,8 @@ async function editPDFHistory(id) {
     if (fontSelect) fontSelect.value = selectedBengaliFont;
     changeBengaliFont();
     currentData = record.currentData || currentData || {};
+    // Editing an existing History record must never trigger another Preview charge.
+    previewChargedForCurrentCertificate = true;
     currentQRImage = record.qrImage || '';
     currentQRLabel = record.qrLabel || '';
     selectedPDFImageId = record.selectedPDFImageId || '';
@@ -1699,9 +1702,8 @@ async function editPDFHistory(id) {
     pdfUrl = pdfBlob ? URL.createObjectURL(pdfBlob) : null;
     if (pdfUrl) { $('certIframe').src = pdfUrl; $('certPreview').style.display = 'block'; }
     editingHistoryId = id;
-    previewChargedForCurrentCertificate = true;
     window.scrollTo({top: 0, behavior: 'smooth'});
-    status('History-এর data ফর্মে এসেছে। Edit করা বিনামূল্যে। Preview করলে আপনার User-এর নির্ধারিত Preview rate অনুযায়ী charge হবে।', 'ok');
+    status('History-এর data ফর্মে এসেছে। প্রয়োজনমতো Edit করে আবার “PDF তৈরি করুন” চাপুন।', 'ok');
   } catch (e) { status('History Edit ব্যর্থ: ' + e.message, 'err'); }
 }
 
@@ -2414,28 +2416,28 @@ function persistFreshAuth(d){
   }catch(_){}
 }
 async function refreshUserBalance(){
-  try{const r=await fetch('/api/balance');const d=await r.json();if(r.ok&&d.ok){persistFreshAuth(d);if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);if($('userPreviewRate'))$('userPreviewRate').textContent=Number(d.previewRate??4);}}
+  try{const r=await fetch('/api/balance');const d=await r.json();if(r.ok&&d.ok){persistFreshAuth(d);if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);}}
   catch(_){}
 }
 let previewChargeInFlight = null;
 async function chargeForPreview(){
   if(previewChargeInFlight) return previewChargeInFlight;
   previewChargeInFlight = (async()=>{
-  const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:4})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok||!d.ok) throw new Error(d.error||'Balance charge failed');
   persistFreshAuth(d);
-  if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);if($('userPreviewRate'))$('userPreviewRate').textContent=Number(d.previewRate??4);
+  if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);
   return d;
   })();
   try { return await previewChargeInFlight; } finally { previewChargeInFlight = null; }
 }
 async function previewPDF(options={}){
-  // Charge only once for a newly fetched certificate. Editing/history previews and
-  // repeated previews in the same session are free.
   if(!options.skipCharge && !previewChargedForCurrentCertificate){
-    try{ await chargeForPreview(); previewChargedForCurrentCertificate = true; }
-    catch(e){ status(e.message,'err'); await refreshUserBalance(); return; }
+    try{
+      await chargeForPreview();
+      previewChargedForCurrentCertificate = true;
+    }catch(e){ status(e.message,'err'); await refreshUserBalance(); return; }
   }
   const previewPromise = generatePDF({saveHistory:false,showPreviewEarly:true});
   setTimeout(()=>$('certPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),40);
@@ -2470,6 +2472,20 @@ window.addEventListener('message',e=>{
 updatePDFImageAdjustUI();
 updatePDFImageAdjustUI();
 const deathDateInput=$('in_dob');
+const manualDobInput=$('in_dob');
+if(manualDobInput){
+  manualDobInput.addEventListener('blur',()=>{
+    const raw=String(manualDobInput.value||'').trim();
+    const normalized=formatDateDDMMYYYY(raw);
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(normalized)){
+      manualDobInput.value=normalized;
+      const hidden=$('in_birthDate');
+      if(hidden && registrationMode==='birth') hidden.value=normalized;
+      const inWord=$('in_inWord');
+      if(inWord && registrationMode==='birth') inWord.value=dateToInWord(normalized);
+    }
+  });
+}
 if(deathDateInput){ deathDateInput.addEventListener('input',()=>{ if(registrationMode==='death'){ const v=deathDateInput.value.trim(); $('in_inWord').value=v?dateToInWord(v):''; pdfPreviewNeedsHistorySave=true; } }); }
 renderPDFHistory();
 loadPDFImageLibrary();
