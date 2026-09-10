@@ -1,0 +1,13 @@
+Final cumulative update
+- Existing core AutoFill/eVerify/Geo/PDF/Image functions preserved.
+- Explicit user login required; stale local session is not auto-unlocked.
+- Admin user list refreshes/merges PostgreSQL + local users.
+- PostgreSQL DATABASE_URL persistence for users, balances, transactions and certificate history.
+- Preview charge: Edit free; Edit->Preview free; first explicit Preview per new certificate/session charges once.
+- PDF preview remains fast; Download reuses generated PDF when possible; Print option added.
+- Admin Image Position Library + A4 visual Image editor preserved.
+- Admin PDF Text Position Editor added; saved offsets apply to certificate text without changing defaults until saved.
+- Union Geo hierarchy resolution preserved.
+- CAPTCHA/eVerify fast-loading optimizations preserved.
+- Universal button animation added.
+- Sub Admin creation, separate customers, base-rate floor and commission tracking added.
