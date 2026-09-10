@@ -706,7 +706,7 @@ body:not(.login-locked) #chatButton,body:not(.login-locked) .chat-button,body:no
   </div>
   <div class="preview-download-bar">
     <button type="button" class="close-preview" onclick="closeCertificatePreview()">✕ প্রিভিউ বন্ধ করুন</button>
-    <button type="button" class="print-cert" onclick="printCertificate()">🖨️ Print</button><button type="button" class="download-cert" onclick="downloadPDF()">⬇️ সার্টিফিকেট ডাউনলোড</button>
+    <button type="button" class="download-cert" onclick="downloadPDF()">⬇️ সার্টিফিকেট ডাউনলোড</button>
   </div>
 </div>
 </div>
@@ -721,10 +721,16 @@ const accessParams=new URLSearchParams(location.search);const accessToken=access
 function getDeviceId(){let id=localStorage.getItem(DEVICE_KEY);if(!id){id=crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);localStorage.setItem(DEVICE_KEY,id)}return id}
 const API_BASE=(location.protocol==='file:'?'http://localhost:3000':''); const originalFetch=window.fetch.bind(window);window.fetch=async function(input,init={}){const url=typeof input==='string'?input:(input?.url||'');if(url.startsWith('/api/')&&!url.includes('/api/auth/login')&&!url.includes('/api/auth/admin-login'))init={...init,headers:{...(init.headers||{}),Authorization:'Bearer '+(localStorage.getItem(AUTH_KEY)||''),'X-Device-Id':getDeviceId()}};return originalFetch((typeof input==='string'&&input.startsWith('/api/')&&location.protocol==='file:')?API_BASE+input:input,init)};
 async function doLogin(e){e.preventDefault();const btn=$('loginBtn'),msg=$('loginMessage'),screen=$('loginScreen');screen.classList.remove('login-error','login-success','child-pull');screen.classList.add('child-pull');msg.className='login-message';msg.textContent='Verifying secure access…';btn.disabled=true;btn.classList.add('loading');try{if(!accessToken)throw Error('এই Login Link-এ access code নেই। Admin থেকে তৈরি করা user link ব্যবহার করুন।');const r=await originalFetch((location.protocol==='file:'?API_BASE:'')+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('loginUsername').value.trim(),password:$('loginPassword').value,accessToken,deviceId:getDeviceId(),userId:accessUserId,auth:accessAuth})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw Error(d.error||'Login failed');localStorage.setItem(AUTH_KEY,d.token);localStorage.setItem('BDRIS_USER_ID',d.user.id);sessionStorage.setItem('BDRIS_ACCESS_TOKEN',accessToken);if(accessUserId)sessionStorage.setItem('BDRIS_ACCESS_USER_ID',accessUserId);if(d.auth)persistFreshAuth(d);else if(accessAuth)sessionStorage.setItem('BDRIS_ACCESS_AUTH',accessAuth);screen.classList.add('login-success');msg.className='login-message success';msg.textContent='Login successful. Opening system…';setTimeout(()=>{screen.classList.add('hidden');document.body.classList.remove('login-locked')},650)}catch(err){screen.classList.add('login-error');msg.className='login-message error';msg.textContent=(err&&err.name==='TypeError'&&/fetch/i.test(err.message))?'Server Connection Error: Server চালু নেই বা এই page সরাসরি file:// থেকে খোলা হয়েছে। RUN-SERVER.bat চালু করে http://localhost:3000 খুলুন।':(/Username বা Password ভুল/i.test(err.message||'')?'সঠিক পাসওয়ার্ড দিন।':(err.message||'Login failed'))}finally{btn.disabled=false;btn.classList.remove('loading')}}
-async function bootAuth(){ try{ localStorage.removeItem(AUTH_KEY); }catch(_){} }
-$('loginForm').addEventListener('submit',doLogin);
-// Always require username/password on page load. Existing session is not used to auto-open the app.
-try{ $('loginScreen').classList.remove('hidden'); document.body.classList.add('login-locked'); }catch(_){}
+async function bootAuth(){
+  // Preserve the original login-gate behavior: never auto-login from a saved session.
+  localStorage.removeItem(AUTH_KEY);
+  sessionStorage.removeItem('BDRIS_ACCESS_TOKEN');
+  sessionStorage.removeItem('BDRIS_ACCESS_USER_ID');
+  sessionStorage.removeItem('BDRIS_ACCESS_AUTH');
+  $('loginScreen').classList.remove('hidden');
+  document.body.classList.add('login-locked');
+}
+$('loginForm').addEventListener('submit',doLogin); /* manual login required; no auto-unlock */
 
 let currentSessionId = null;
 let mathCaptchaA = 0, mathCaptchaB = 0, mathCaptchaOp = '+';
@@ -755,9 +761,6 @@ let imageWidth = 24;
 let imageHeight = 10;
 let pdfPreviewRefreshTimer = null;
 let pdfPreviewNeedsHistorySave = false;
-let pdfLayout = {};
-async function loadPDFLayout(){try{const r=await fetch('/api/pdf-layout');if(r.ok){const d=await r.json();pdfLayout=d.layout||{};}}catch(_){} }
-function layoutOffset(key){const p=pdfLayout[key]||{};return `left:${Number(p.x)||0}mm;top:${Number(p.y)||0}mm;`;}
 
 function updatePDFImageAdjustUI(){
   const frame=$('certIframe');
@@ -818,21 +821,15 @@ box.addEventListener('pointerup',finish);box.addEventListener('pointercancel',fi
 })();<\/script>`;
   return html.replace('</body>',script+'</body>');
 }
-function toggleSideMenu(){
-  const bar=document.querySelector('.side-bar'), back=document.getElementById('sideMenuBackdrop');
-  if(!bar||!back)return;
-  const open=!bar.classList.contains('open');
-  bar.classList.toggle('open',open); back.classList.toggle('open',open);
-  document.body.classList.toggle('side-menu-open',open);
-}
-function closeSideMenu(){
-  const bar=document.querySelector('.side-bar'), back=document.getElementById('sideMenuBackdrop');
-  if(bar)bar.classList.remove('open'); if(back)back.classList.remove('open'); document.body.classList.remove('side-menu-open');
-}
-function showRestoredMenuMessage(name){ status(name+' অপশনটি আগের সিস্টেমের মতো রাখা হয়েছে।','ok'); }
-function logoutFromMenu(){ localStorage.removeItem(AUTH_KEY); sessionStorage.removeItem('BDRIS_ACCESS_TOKEN'); sessionStorage.removeItem('BDRIS_ACCESS_USER_ID'); sessionStorage.removeItem('BDRIS_ACCESS_AUTH'); location.reload(); }
+function showRestoredMenuMessage(name){status(name+' option selected.','ok');}
+function openPaymentRecharge(){closeSideMenu(); window.open('https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge','_blank','noopener');}
+function openPaymentSupport(){closeSideMenu(); window.open('https://wa.me/8801331167629?text=BDRIS%20Support','_blank','noopener');}
+function logoutFromMenu(){closeSideMenu(); localStorage.removeItem(AUTH_KEY); sessionStorage.removeItem('BDRIS_ACCESS_TOKEN'); location.reload();}
+function toggleSideMenu(){const bar=document.querySelector('.side-bar'),back=document.getElementById('sideMenuBackdrop');if(!bar||!back)return;const open=!bar.classList.contains('open');bar.classList.toggle('open',open);back.classList.toggle('open',open);document.body.classList.toggle('side-menu-open',open);}
+function closeSideMenu(){const bar=document.querySelector('.side-bar'),back=document.getElementById('sideMenuBackdrop');if(bar)bar.classList.remove('open');if(back)back.classList.remove('open');document.body.classList.remove('side-menu-open');}
+function scrollToPdfImage(){const el=document.querySelector('.pdf-image-panel');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}
+function scrollToPdfHistory(){const el=document.querySelector('.history-panel');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSideMenu()});
-
 async function loadPDFImageLibrary(){
   try{
     const r=await fetch('/api/pdf-images');
@@ -1019,47 +1016,60 @@ function getNormalized(value) {
 
 function resolveGeoParentsForAutoFill(data, fields){
   try{
-    if(!data || typeof ADDRESS_GEO_DATA!=='object') return data;
-    const rows=Array.isArray(fields)?fields:[];
-    const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/g,'');
-    const pick=(labels)=>{
-      const wanted=labels.map(norm);
-      const row=rows.find(r=>wanted.includes(norm(r?.label))||wanted.includes(norm(r?.englishLabel)));
-      return String(row?.value||row?.englishValue||'').trim();
-    };
-    let district=pick(['জেলা','district','zilla']) || String(data.district||'').trim();
-    let upazila=pick(['উপজেলা','upazila','upzila','upazilla','thana']) || String(data.upazila||'').trim();
-    let union=pick(['ইউনিয়ন','ইউনিয়ন','union']) || String(data.union||'').trim();
-    const districts=ADDRESS_GEO_DATA.districts||[];
-    const exact=(list,v)=>{const q=norm(v);return list.find(x=>norm(x.bn)===q||norm(x.en)===q)||null;};
-    let d=exact(districts,district);
-    let u=d?exact(d.upazilas||[],upazila):null;
-    // If district is missing, first resolve UPazila globally.
-    if(!d && upazila){
-      const hits=[]; for(const d0 of districts){const u0=exact(d0.upazilas||[],upazila); if(u0)hits.push([d0,u0]);}
-      if(hits.length===1){d=hits[0][0];u=hits[0][1];}
+    if(typeof geoExtractAddress!=='function') return data;
+    const sourceParts=[];
+    for(const item of (Array.isArray(fields)?fields:[])){
+      sourceParts.push(String(item?.label||''), String(item?.value||''), String(item?.englishLabel||''), String(item?.englishValue||''));
     }
-    // Most important Union case: resolve Union globally -> its exact Upazila -> District.
-    if(union){
-      if(u){ const un=exact(u.unions||[],union); if(un) union=un.bn; }
-      if(!u || !d){
-        const hits=[];
-        for(const d0 of districts){
-          for(const u0 of (d0.upazilas||[])){
-            const un=exact(u0.unions||[],union);
-            if(un) hits.push([d0,u0,un]);
-          }
+    sourceParts.push(String(data?.pobBn||''), String(data?.pobEn||''));
+    const raw=sourceParts.filter(Boolean).join('\n');
+    if(!raw) return data;
+    const parsed=geoExtractAddress(raw);
+    let district=parsed?.district||'';
+    let upazila=parsed?.upazila||'';
+    let union=parsed?.union||'';
+
+    // If only an upazila is visible, resolve its parent district from Geo Data.
+    let districtObj=geoFindDistrict(district);
+    if(!districtObj && upazila){
+      const hits=[];
+      for(const d0 of (ADDRESS_GEO_DATA?.districts||[])){
+        const u0=geoFindUpazila(upazila,d0);
+        if(u0) hits.push([d0,u0]);
+      }
+      if(hits.length===1){ districtObj=hits[0][0]; upazila=hits[0][1].bn; }
+    }
+
+    // If only a union is visible, resolve it inside the known district/upazila.
+    if(!districtObj && union){
+      const hits=[];
+      for(const d0 of (ADDRESS_GEO_DATA?.districts||[])){
+        for(const u0 of (d0.upazilas||[])){
+          const un0=geoFindUnion(union,u0);
+          if(un0) hits.push([d0,u0,un0]);
         }
-        if(hits.length===1){d=hits[0][0];u=hits[0][1];union=hits[0][2].bn;}
+      }
+      if(hits.length===1){ districtObj=hits[0][0]; upazila=hits[0][1].bn; union=hits[0][2].bn; }
+    } else if(districtObj && union && !upazila){
+      for(const u0 of (districtObj.upazilas||[])){
+        const un0=geoFindUnion(union,u0);
+        if(un0){ upazila=u0.bn; union=un0.bn; break; }
       }
     }
-    if(d) district=d.bn;
-    if(u) upazila=u.bn;
-    // Only write hierarchy values when the Geo Data actually resolved them.
-    if((upazila||district) && !String(data.upazilaPouroshavaUnion||'').trim()){
+
+    if(districtObj) district=districtObj.bn;
+    // Never invent an unrelated first upazila. Only fill what Geo Data can resolve.
+    if(!data.upazilaPouroshavaUnion && (upazila||district)){
       data.upazilaPouroshavaUnion=[upazila,district].filter(Boolean).join(' ').trim();
     }
-    // Keep supplied birth-place text intact; only append Geo parents when empty.
+    if(!data.pobBn && (parsed?.villageBn||parsed?.postOfficeBn||district||upazila||union)){
+      const parts=[parsed?.villageBn, parsed?.postOfficeBn, upazila, district].filter(Boolean);
+      if(parts.length) data.pobBn=parts.join(', ');
+    }
+    if(!data.pobEn && (parsed?.villageEn||parsed?.postOfficeEn||upazila||district||union)){
+      const parts=[parsed?.villageEn, parsed?.postOfficeEn, upazila, district].filter(Boolean);
+      if(parts.length) data.pobEn=parts.join(', ');
+    }
     return data;
   }catch(_){ return data; }
 }
@@ -1109,8 +1119,6 @@ async function fill(d) {
     if (input) input.value = value;
   }
   currentData = d;
-  if(!currentSessionId) currentSessionId='manual-'+Date.now().toString(36);
-  previewChargedSessionId=null;
   generateQRForCertificate().catch(() => {});
   renderAll(fields);
 }
@@ -1359,7 +1367,6 @@ function clearForm(){
  $("captchaArea").style.display = "none";
  $("certPreview").style.display = "none";
  currentSessionId = null;
- previewChargedSessionId = null;
  currentData = null;
  currentQRImage = "";
  selectedPDFImageId = "";
@@ -1367,7 +1374,7 @@ function clearForm(){
  selectedPDFImageDataUrl = "";
  $('in_deathCauseBn') && ($('in_deathCauseBn').value=''); $('in_deathCauseEn') && ($('in_deathCauseEn').value=''); $('in_deathCauseBnSelect') && ($('in_deathCauseBnSelect').value=''); $('in_deathCauseEnSelect') && ($('in_deathCauseEnSelect').value=''); $('in_deathCauseBn') && ($('in_deathCauseBn').style.display='none'); $('in_deathCauseEn') && ($('in_deathCauseEn').style.display='none');
  setRegistrationMode('birth');
- imagePositionX = 105; imagePositionY = 247; imageZoom = 100; imageWidth = 24; imageHeight = 10;
+ imagePositionX = 0; imagePositionY = 0; imageZoom = 100; imageWidth = 100; imageHeight = 100;
  updatePDFImageAdjustUI();
  renderPDFImageLibrary();
  if ($("qrLink")) $("qrLink").value = "";
@@ -1635,8 +1642,6 @@ function formatHistoryDate(ts) {
   try { return new Date(ts).toLocaleString('bn-BD'); } catch (_) { return new Date(ts).toLocaleString(); }
 }
 
-async function saveHistoryToServer(record){try{if(!record?.pdfBlob)return;const bytes=new Uint8Array(await record.pdfBlob.arrayBuffer());let binary='';const step=0x8000;for(let i=0;i<bytes.length;i+=step)binary+=String.fromCharCode(...bytes.subarray(i,i+step));const pdfBase64=btoa(binary);await fetch('/api/certificates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:record.id,data:record.data,certificateType:record.certificateType,registrationMode:record.registrationMode,selectedBengaliFont:record.selectedBengaliFont,currentData:record.currentData,selectedPDFImageId:record.selectedPDFImageId,selectedPDFImageName:record.selectedPDFImageName,imagePositionX:record.imagePositionX,imagePositionY:record.imagePositionY,imageZoom:record.imageZoom,imageWidth:record.imageWidth,imageHeight:record.imageHeight,createdAt:record.createdAt,pdfBase64})});}catch(_){} }
-
 async function saveCurrentPDFToHistory() {
   if (!pdfBlob || !pdfBlob.size) return;
   const formData = collectPDFFormData();
@@ -1662,7 +1667,6 @@ async function saveCurrentPDFToHistory() {
     pdfBlob
   };
   await putPDFHistory(record);
-  await saveHistoryToServer(record);
   editingHistoryId = null;
   await renderPDFHistory();
 }
@@ -1705,7 +1709,6 @@ async function editPDFHistory(id) {
     pdfUrl = pdfBlob ? URL.createObjectURL(pdfBlob) : null;
     if (pdfUrl) { $('certIframe').src = pdfUrl; $('certPreview').style.display = 'block'; }
     editingHistoryId = id;
-    previewChargedSessionId = id;
     window.scrollTo({top: 0, behavior: 'smooth'});
     status('History-এর data ফর্মে এসেছে। Edit করা বিনামূল্যে। Preview করলে আপনার User-এর নির্ধারিত Preview rate অনুযায়ী charge হবে।', 'ok');
   } catch (e) { status('History Edit ব্যর্থ: ' + e.message, 'err'); }
@@ -1911,27 +1914,17 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .meta-table { width: 100%; margin-top: 2mm; margin-bottom: 35px; border-collapse: collapse; border: none; }
 .meta-table td { padding: 2px 0; vertical-align: top; font-size: 10.5pt; border: none; }
 .reg-num-label { font-size: 11pt; }
-.reg-num-value { font-family: Arial, sans-serif !important; font-size: 12pt; font-weight: 700 !important; letter-spacing:.15px; }
+.reg-num-value { font-size: 12pt; }
 .meta-value-row td { position: relative; top: -0.5mm; }
 .info-table { width: 100%; border-collapse: collapse; margin-bottom: 60px; border: none; }
 .info-table td { padding: 6.5px 0; vertical-align: top; font-size: 11pt; line-height: 1.4; position: relative; top: -3mm; border: none; }
 .dob-row td { top: -5mm !important; }
 .img-row-fix td { top: -7mm !important; }
 .address-row-shift td { top: 0 !important; }
-.meta-value-row .reg-num-value{position:relative;${layoutOffset('brn')}} .meta-value-row td:first-child{position:relative;${layoutOffset('regDate')}} .meta-value-row td:last-child{position:relative;${layoutOffset('issuanceDate')}}
-.birth-date-row .dob-value-fix{position:relative;${layoutOffset('dob')}} .sex-container{${layoutOffset('sex')}}
-.img-row-fix .inword-value-fix{${layoutOffset('inword')}}
-.info-table tr:nth-of-type(3) .value-bn-shift{${layoutOffset('nameBn')}} .info-table tr:nth-of-type(3) .value-en-text{${layoutOffset('nameEn')}}
-.info-table tr:nth-of-type(4) .value-bn-shift{${layoutOffset('motherBn')}} .info-table tr:nth-of-type(4) .value-en-text{${layoutOffset('motherEn')}}
-.info-table tr:nth-of-type(5) .value-bn-shift{${layoutOffset('motherNatBn')}} .info-table tr:nth-of-type(5) .value-en-text{${layoutOffset('motherNatEn')}}
-.info-table tr:nth-of-type(6) .value-bn-shift{${layoutOffset('fatherBn')}} .info-table tr:nth-of-type(6) .value-en-text{${layoutOffset('fatherEn')}}
-.info-table tr:nth-of-type(7) .value-bn-shift{${layoutOffset('fatherNatBn')}} .info-table tr:nth-of-type(7) .value-en-text{${layoutOffset('fatherNatEn')}}
-.info-table tr:nth-of-type(8) .value-bn-shift{${layoutOffset('pobBn')}} .info-table tr:nth-of-type(8) .value-en-text{${layoutOffset('pobEn')}}
-.info-table tr:nth-of-type(9) .value-bn-shift{${layoutOffset('addrBn')}} .info-table tr:nth-of-type(9) .address-en-block{${layoutOffset('addrEn')}}
-.label-bn-main { width: 18%; font-size: 12pt !important; font-weight: 400; }
-.address-bn-font { width: 18%; font-size: 12pt !important; font-weight: 400; }
+.label-bn-main { width: 18%; font-size: 14pt !important; font-weight: 400; }
+.address-bn-font { width: 18%; font-size: 13pt !important; font-weight: 400; }
 .colon-cell { width: 3%; text-align: center; position: relative; left: 2mm; }
-.value-bn-main { width: 32%; font-size: 13pt !important; font-weight: 400; padding-right: 10px; }
+.value-bn-main { width: 32%; font-size: 14pt !important; font-weight: 400; padding-right: 10px; }
 .value-bn-shift { position: relative; left: 3mm; }
 .label-en { width: 11%; font-size: 11pt; position: relative; left: 0; }
 .value-en { width: 36%; font-size: 11pt; position: relative; left: 0; }
@@ -2330,7 +2323,7 @@ body:not(.login-locked) .close-preview{background:#fff !important;color:#334155 
     <td style="width:30%;text-align:left;padding-left:12mm">Date of Issuance</td>
   </tr><tr class="meta-value-row">
     <td style="text-align:left">${escPdf(regDate)}</td>
-    <td style="text-align:center;font-weight:bold"><span class="reg-num-value" style="font-family:Arial,sans-serif!important;font-weight:700!important">${escPdf(brn)}</span></td>
+    <td style="text-align:center;font-weight:bold"><span class="serif-text reg-num-value">${escPdf(brn)}</span></td>
     <td style="text-align:left;padding-left:12mm">${escPdf(issuanceDate)}</td>
   </tr></table>
 
@@ -2346,7 +2339,7 @@ body:not(.login-locked) .close-preview{background:#fff !important;color:#334155 
     <tr><td class="label-bn-main">পিতা</td><td class="colon-cell">:</td><td class="value-bn-main"><span class="value-bn-shift">${escPdf(fatherBn)}</span></td><td class="label-en">Father</td><td class="value-en">:<span class="value-en-text">${escPdf(fatherEn)}</span></td></tr>
     <tr><td class="label-bn-main">পিতার জাতীয়তা</td><td class="colon-cell">:</td><td class="value-bn-main"><span class="value-bn-shift">${escPdf(fatherNatBn)}</span></td><td class="label-en">Nationality</td><td class="value-en">:<span class="value-en-text">${escPdf(fatherNatEn)}</span></td></tr>
     <tr><td class="label-bn-main">জন্মস্থান</td><td class="colon-cell">:</td><td class="value-bn-main"><span class="value-bn-shift">${escPdf(pobBn)}</span></td><td class="label-en" style="white-space:nowrap">Place of Birth</td><td class="value-en">:<span class="value-en-text">${escPdf(pobEn)}</span></td></tr>
-    ${registrationMode === 'death' ? `<tr class="address-row-shift"><td class="address-bn-font"><span style="display:inline-block;line-height:1.05">মৃত্যুর কারণ<br><small style="font-size:7pt;font-weight:normal;white-space:nowrap">(আই সি ডি ভার্সন অনুসারে)</small></span></td><td class="colon-cell">:</td><td class="value-bn-main" style="font-size:12.5pt !important"><span class="value-bn-shift" style="line-height:1.2;display:inline-block">${escPdf(deathCauseBn).replace(/\n/g,'<br>')}</span></td><td class="label-en" style="white-space:nowrap"><span style="display:inline-block;line-height:1.05">Cause of Death<br><small style="font-size:7pt;font-weight:normal;white-space:nowrap">(As Per ICD Version)</small></span></td><td class="value-en">:<span class="address-en-block">${escPdf(deathCauseEn)}</span></td></tr>` : `<tr class="address-row-shift"><td class="address-bn-font">স্থায়ী ঠিকানা</td><td class="colon-cell">:</td><td class="value-bn-main" style="font-size:12.5pt !important"><span class="value-bn-shift" style="line-height:1.2;display:inline-block">${escPdf(addrBn).replace(/\n/g,'<br>')}</span></td><td class="label-en">Permanent<br>Address</td><td class="value-en">:<span class="address-en-block">${escPdf(addrEn)}</span></td></tr>`}
+    ${registrationMode === 'death' ? `<tr class="address-row-shift"><td class="address-bn-font"><span style="display:inline-block;line-height:1.05">মৃত্যুর কারণ<br><small style="font-size:7pt;font-weight:normal;white-space:nowrap">(আই সি ডি ভার্সন অনুসারে)</small></span></td><td class="colon-cell">:</td><td class="value-bn-main" style="font-size:13pt !important"><span class="value-bn-shift" style="line-height:1.2;display:inline-block">${escPdf(deathCauseBn).replace(/\n/g,'<br>')}</span></td><td class="label-en" style="white-space:nowrap"><span style="display:inline-block;line-height:1.05">Cause of Death<br><small style="font-size:7pt;font-weight:normal;white-space:nowrap">(As Per ICD Version)</small></span></td><td class="value-en">:<span class="address-en-block">${escPdf(deathCauseEn)}</span></td></tr>` : `<tr class="address-row-shift"><td class="address-bn-font">স্থায়ী ঠিকানা</td><td class="colon-cell">:</td><td class="value-bn-main" style="font-size:13pt !important"><span class="value-bn-shift" style="line-height:1.2;display:inline-block">${escPdf(addrBn).replace(/\n/g,'<br>')}</span></td><td class="label-en">Permanent<br>Address</td><td class="value-en">:<span class="address-en-block">${escPdf(addrEn)}</span></td></tr>`}
   </table>
 
   ${selectedPDFImage ? `<div class="pdf-image-overlay"><img src="${escPdf(selectedPDFImage)}" alt="Selected PDF Image"></div>` : ''}
@@ -2358,15 +2351,7 @@ body:not(.login-locked) .close-preview{background:#fff !important;color:#334155 
   </div>
 
   <div class="bottom-note">This certificate is generated from bdris.gov.bd, and to verify this certificate, please scan the above QR Code &amp; Bar Code.</div>
-</div></div><style id="universal-button-motion">
-body:not(.login-locked) button,.login-btn{position:relative;overflow:hidden;transform:translateZ(0);transition:transform .16s ease,box-shadow .16s ease,filter .16s ease!important;}
-body:not(.login-locked) button:before,.login-btn:before{content:"";position:absolute;top:0;left:-130%;width:55%;height:100%;background:linear-gradient(105deg,transparent,rgba(255,255,255,.34),transparent);transform:skewX(-18deg);transition:left .55s ease;pointer-events:none;}
-body:not(.login-locked) button:hover:before,.login-btn:hover:before{left:150%;}
-body:not(.login-locked) button:hover,.login-btn:hover{transform:translateY(-2px) scale(1.012)!important;filter:brightness(1.04);}
-body:not(.login-locked) button:active,.login-btn:active{transform:translateY(0) scale(.975)!important;}
-.preview-download-bar .print-cert{background:#f59e0b;color:#fff;border-color:#f59e0b;}
-</style>
-</body></html>`;
+</div></div></body></html>`;
 
   // Fast preview mode: render the certificate HTML immediately. The real PDF
   // is generated in the background, so Render/Chromium startup no longer
@@ -2442,22 +2427,26 @@ async function refreshUserBalance(){
   catch(_){}
 }
 let previewChargeInFlight = null;
-let previewChargedSessionId = null;
-async function chargeForPreview(certificateId){
+async function chargeForPreview(){
   if(previewChargeInFlight) return previewChargeInFlight;
-  previewChargeInFlight=(async()=>{const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({certificateId:String(certificateId||currentSessionId||editingHistoryId||'')})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.error||'Balance charge failed');persistFreshAuth(d);if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);if($('userPreviewRate'))$('userPreviewRate').textContent=Number(d.previewRate??4);if(!d.alreadyCharged)previewChargedSessionId=certificateId||currentSessionId||editingHistoryId||null;return d;})();
-  try{return await previewChargeInFlight;}finally{previewChargeInFlight=null;}
+  previewChargeInFlight = (async()=>{
+  const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok||!d.ok) throw new Error(d.error||'Balance charge failed');
+  persistFreshAuth(d);
+  if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);if($('userPreviewRate'))$('userPreviewRate').textContent=Number(d.previewRate??4);
+  return d;
+  })();
+  try { return await previewChargeInFlight; } finally { previewChargeInFlight = null; }
 }
 async function previewPDF(options={}){
-  const explicit=!options.skipCharge;
-  const certId=String(currentSessionId||editingHistoryId||'').trim();
-  if(explicit && certId && previewChargedSessionId!==certId){try{await chargeForPreview(certId);}catch(e){status(e.message,'err');await refreshUserBalance();return;}}
-  const previewPromise=generatePDF({saveHistory:false,showPreviewEarly:true});
+  if(!options.skipCharge){
+    try{ await chargeForPreview(); }catch(e){ status(e.message,'err'); await refreshUserBalance(); return; }
+  }
+  const previewPromise = generatePDF({saveHistory:false,showPreviewEarly:true});
   setTimeout(()=>$('certPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),40);
   await previewPromise;
 }
-
-function printCertificate(){ const frame=$('certIframe'); if(frame?.contentWindow){ try{frame.contentWindow.focus();frame.contentWindow.print();return;}catch(_){} } if(pdfUrl) window.open(pdfUrl,'_blank','noopener'); }
 
 async function downloadPDF() {
   try {
@@ -2480,20 +2469,16 @@ async function downloadPDF() {
 
 window.addEventListener('message',e=>{
   if(e.data?.type!=='pdf-image-editor-change')return;
-  imagePositionX=Math.max(0,Math.min(210,Number(e.data.x)||105)); imagePositionY=Math.max(0,Math.min(297,Number(e.data.y)||247));
-  imageWidth=Math.max(8,Math.min(180,Number(e.data.w)||24)); imageHeight=Math.max(5,Math.min(250,Number(e.data.h)||10));
+  imagePositionX=Number(e.data.x)||0; imagePositionY=Number(e.data.y)||0;
+  imageWidth=Math.max(20,Math.min(100,Number(e.data.w)||100)); imageHeight=Math.max(8,Math.min(100,Number(e.data.h)||100));
   imageZoom=Math.max(50,Math.min(300,Number(e.data.z)||100)); pdfPreviewNeedsHistorySave=true;
 });
 updatePDFImageAdjustUI();
 updatePDFImageAdjustUI();
 const deathDateInput=$('in_dob');
 if(deathDateInput){ deathDateInput.addEventListener('input',()=>{ if(registrationMode==='death'){ const v=deathDateInput.value.trim(); $('in_inWord').value=v?dateToInWord(v):''; pdfPreviewNeedsHistorySave=true; } }); }
-async function syncServerHistory(){try{const r=await fetch('/api/certificates');if(!r.ok)return;const d=await r.json();for(const rec of (d.certificates||[])){if(!rec.pdfBase64)continue;try{const bin=atob(rec.pdfBase64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);rec.pdfBlob=new Blob([arr],{type:'application/pdf'});delete rec.pdfBase64;await putPDFHistory(rec);}catch(_){} }await renderPDFHistory();}catch(_){} }
-
 renderPDFHistory();
 loadPDFImageLibrary();
-loadPDFLayout();
-syncServerHistory();
 refreshUserBalance();
 setInterval(loadPDFImageLibrary, 15000);
 

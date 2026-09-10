@@ -32,50 +32,17 @@ app.get('/fonts/:file', (req, res) => {
 });
 
 const sessions = new Map();
-let pgPool=null, pgReady=false, pgSyncTimer=null, pgSyncInFlight=false;
 
 const AUTH_DIR = path.join(__dirname, '.private');
 const AUTH_FILE = path.join(AUTH_DIR, 'users.json');
 fs.mkdirSync(AUTH_DIR, { recursive: true });
 function hashPassword(password){return crypto.createHash('sha256').update(String(password)).digest('hex');}
 function authSecret(){return crypto.createHash('sha256').update(String(process.env.AUTH_SECRET||process.env.ADMIN_PASSWORD||'BDRIS-AUTO-FILL-AUTH-SECRET')).digest();}
-function sealUserPayload(user){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',authSecret(),iv);const plain=Buffer.from(JSON.stringify({id:user.id,username:user.username,name:user.name||'',passwordHash:user.passwordHash,accessToken:user.accessToken,enabled:user.enabled!==false,createdAt:user.createdAt||Date.now(),balance:Number(user.balance)||0,previewRate:Number.isFinite(Number(user.previewRate))&&Number(user.previewRate)>=0?Number(user.previewRate):4,role:user.role||'customer',parentId:user.parentId||'',rate:Number.isFinite(Number(user.rate))?Number(user.rate):Number(user.previewRate)||4}),'utf8');const enc=Buffer.concat([cipher.update(plain),cipher.final()]);const tag=cipher.getAuthTag();return Buffer.concat([iv,tag,enc]).toString('base64url');}
+function sealUserPayload(user){const iv=crypto.randomBytes(12);const cipher=crypto.createCipheriv('aes-256-gcm',authSecret(),iv);const plain=Buffer.from(JSON.stringify({id:user.id,username:user.username,name:user.name||'',passwordHash:user.passwordHash,accessToken:user.accessToken,enabled:user.enabled!==false,createdAt:user.createdAt||Date.now(),balance:Number(user.balance)||0,previewRate:Number.isFinite(Number(user.previewRate))&&Number(user.previewRate)>=0?Number(user.previewRate):4}),'utf8');const enc=Buffer.concat([cipher.update(plain),cipher.final()]);const tag=cipher.getAuthTag();return Buffer.concat([iv,tag,enc]).toString('base64url');}
 function openUserPayload(value){try{const b=Buffer.from(String(value||''),'base64url');if(b.length<28)return null;const decipher=crypto.createDecipheriv('aes-256-gcm',authSecret(),b.subarray(0,12));decipher.setAuthTag(b.subarray(12,28));return JSON.parse(Buffer.concat([decipher.update(b.subarray(28)),decipher.final()]).toString('utf8'));}catch(_){return null;}}
 function loadAuthStore(){try{return JSON.parse(fs.readFileSync(AUTH_FILE,'utf8'));}catch(_){const store={users:[],admin:{username:process.env.ADMIN_USERNAME||'admin',passwordHash:hashPassword(process.env.ADMIN_PASSWORD||'change-this-admin-password')}};fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));return store;}}
-function saveAuthStore(store){fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2)); queuePgSync();}
-function saveAuthStoreLocalOnly(store){try{fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));}catch(_){} }
-async function initPostgres(){
-  if(!process.env.DATABASE_URL) return;
-  try{
-    const {Pool}=require('pg');
-    pgPool=new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false},max:5,idleTimeoutMillis:30000});
-    await pgPool.query(`CREATE TABLE IF NOT EXISTS bdris_users (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW());`);
-    await pgPool.query(`CREATE TABLE IF NOT EXISTS bdris_transactions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,certificate_id TEXT,data JSONB NOT NULL,created_at TIMESTAMPTZ DEFAULT NOW());`);
-    const rows=(await pgPool.query('SELECT data FROM bdris_users ORDER BY updated_at ASC')).rows;
-    if(rows.length){
-      const merged=new Map();
-      for(const r of rows){const u=r.data||{}; if(u.id) merged.set(String(u.id),u);}
-      for(const u of (authStore.users||[])){if(u.id && !merged.has(String(u.id))) merged.set(String(u.id),u);}
-      authStore.users=Array.from(merged.values());
-      saveAuthStoreLocalOnly(authStore);
-      for(const u of authStore.users) await pgPool.query('INSERT INTO bdris_users(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(u.id),u]);
-    } else if((authStore.users||[]).length){ for(const u of authStore.users) await pgPool.query('INSERT INTO bdris_users(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(u.id),u]); }
-    pgReady=true; console.log('🐘 PostgreSQL persistence: READY');
-  }catch(e){ pgPool=null; pgReady=false; console.warn('⚠️ PostgreSQL unavailable; using local JSON fallback:',e.message); }
-}
-async function syncPostgres(){
-  if(!pgPool||!pgReady||pgSyncInFlight)return; pgSyncInFlight=true;
-  try{
-    await pgPool.query('BEGIN');
-    for(const u of authStore.users||[]) await pgPool.query('INSERT INTO bdris_users(id,data) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()',[String(u.id),u]);
-    if((authStore.users||[]).length) await pgPool.query('DELETE FROM bdris_users WHERE NOT (id = ANY($1::text[]))',[(authStore.users||[]).map(u=>String(u.id))]);
-    await pgPool.query('COMMIT');
-  }catch(e){try{await pgPool.query('ROLLBACK')}catch(_){} console.warn('PostgreSQL sync failed:',e.message);} finally{pgSyncInFlight=false;}
-}
-function queuePgSync(){if(!pgReady)return;clearTimeout(pgSyncTimer);pgSyncTimer=setTimeout(()=>syncPostgres().catch(()=>{}),150);}
-
+function saveAuthStore(store){fs.writeFileSync(AUTH_FILE,JSON.stringify(store,null,2));}
 const authStore=loadAuthStore();
-if(!Array.isArray(authStore.transactions)) authStore.transactions=[];
 for(const u of (authStore.users||[])){ if(!Number.isFinite(Number(u.balance))) u.balance=0; if(!Number.isFinite(Number(u.previewRate))||Number(u.previewRate)<0) u.previewRate=4; }
 saveAuthStore(authStore);
 const authSessions=new Map();
@@ -96,17 +63,6 @@ function loadPDFImageLibrary(){
 function savePDFImageLibrary(store){ fs.writeFileSync(PDF_IMAGE_INDEX, JSON.stringify(store,null,2)); }
 function safeImageName(name){ return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').slice(0,120); }
 const DEFAULT_PDF_IMAGE_NAMES = ['জুন-০৭','জুন-০৮','জুন-০৯','উত্তর','চট্টগ্রাম সিটি zon-03','zon-2','zon-01','zon-05','union'];
-const PDF_LAYOUT_FILE = path.join(__dirname, 'data', 'pdf-layout.json');
-const PDF_LAYOUT_DEFAULTS = {
-  brn: {x:0,y:0}, dob:{x:0,y:0}, inword:{x:0,y:0}, nameBn:{x:0,y:0}, nameEn:{x:0,y:0},
-  motherBn:{x:0,y:0}, motherEn:{x:0,y:0}, motherNatBn:{x:0,y:0}, motherNatEn:{x:0,y:0},
-  fatherBn:{x:0,y:0}, fatherEn:{x:0,y:0}, fatherNatBn:{x:0,y:0}, fatherNatEn:{x:0,y:0},
-  pobBn:{x:0,y:0}, pobEn:{x:0,y:0}, addrBn:{x:0,y:0}, addrEn:{x:0,y:0},
-  registrationOffice:{x:0,y:0}, upazilaUnion:{x:0,y:0}, sex:{x:0,y:0}, regDate:{x:0,y:0}, issuanceDate:{x:0,y:0}
-};
-function loadPDFLayout(){try{const v=JSON.parse(fs.readFileSync(PDF_LAYOUT_FILE,'utf8'));return {...PDF_LAYOUT_DEFAULTS,...v};}catch(_){return JSON.parse(JSON.stringify(PDF_LAYOUT_DEFAULTS));}}
-function savePDFLayout(v){fs.mkdirSync(path.dirname(PDF_LAYOUT_FILE),{recursive:true});fs.writeFileSync(PDF_LAYOUT_FILE,JSON.stringify(v,null,2));}
-let pdfLayoutStore=loadPDFLayout();
 let pdfImageStore = loadPDFImageLibrary();
 if(!Array.isArray(pdfImageStore.images)) pdfImageStore={images:[]};
 for(const im of pdfImageStore.images){ if(!im.defaultPosition) im.defaultPosition={x:105,y:247,width:24,height:10,zoom:100}; }
@@ -127,7 +83,6 @@ function pdfImageMeta(x){
 }
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
-app.post('/api/auth/subadmin-login',(req,res)=>{const {username,password,deviceId}=req.body||{};const user=authStore.users.find(u=>u.username===username&&u.role==='subadmin');if(!user||!user.enabled)return res.status(403).json({ok:false,error:'Sub Admin account সক্রিয় নেই।'});if(user.passwordHash!==hashPassword(password||''))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই Sub Admin অন্য device-এর সাথে যুক্ত আছে।'});if(!user.deviceId&&deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();authSessions.set(token,{kind:'subadmin',userId:user.id,username:user.username,name:user.name||'',createdAt:Date.now()});res.json({ok:true,token,user:{id:user.id,username:user.username,name:user.name||'',rate:Number(user.rate||process.env.BASE_RATE||4)},baseRate:Number(process.env.BASE_RATE||4)});});
 app.post('/api/auth/login',(req,res)=>{const {username,password,accessToken,deviceId,userId,auth}=req.body||{};if(!username||!password||!accessToken||!deviceId)return res.status(400).json({ok:false,error:'Username, password, access link এবং device তথ্য প্রয়োজন।'});let user=authStore.users.find(u=>u.accessToken===accessToken);if(!user&&userId)user=authStore.users.find(u=>u.id===String(userId));if(auth){const r=openUserPayload(auth);if(r&&r.accessToken===accessToken&&r.id===String(userId||r.id)&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){const stored=authStore.users.find(u=>u.id===r.id);user={...(stored||{}),...r,deviceId:stored?.deviceId||'',lastLoginAt:stored?.lastLoginAt||null,balance:Number(r.balance)||0,previewRate:Number.isFinite(Number(r.previewRate))&&Number(r.previewRate)>=0?Number(r.previewRate):(Number.isFinite(Number(stored?.previewRate))&&Number(stored.previewRate)>=0?Number(stored.previewRate):4)};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}if(!user||!user.enabled)return res.status(403).json({ok:false,error:'এই access link সক্রিয় নেই।'});if(user.username!==username||user.passwordHash!==hashPassword(password))return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});if(user.deviceId&&user.deviceId!==deviceId)return res.status(403).json({ok:false,error:'এই access link অন্য একটি device-এর সাথে যুক্ত আছে।'});if(!user.deviceId)user.deviceId=deviceId;user.lastLoginAt=Date.now();saveAuthStore(authStore);const token=newToken();authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken,createdAt:Date.now()});res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});});
 app.post('/api/auth/admin-login',(req,res)=>{const {username,password}=req.body||{};if(username!==authStore.admin.username||hashPassword(password||'')!==authStore.admin.passwordHash)return res.status(401).json({ok:false,error:'Admin username বা password ভুল।'});const token=newToken();authSessions.set(token,{kind:'admin',username,createdAt:Date.now()});res.json({ok:true,token});});
 function requireAuth(req,res,next){const session=authUser(req);if(!session)return res.status(401).json({ok:false,error:'Login required.'});req.auth=session;next();}
@@ -138,35 +93,38 @@ app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth
   if(!Number.isFinite(Number(user.balance))) user.balance=0;
   res.json({ok:true,balance:Number(user.balance),previewRate:Number.isFinite(Number(user.previewRate))&&Number(user.previewRate)>=0?Number(user.previewRate):4,auth:sealUserPayload(user)});
 });
-app.post('/api/balance/charge',requireAuth,async (req,res)=>{
-  const user=authStore.users.find(u=>u.id===req.auth.userId); if(!user)return res.status(404).json({ok:false,error:'User not found.'});
-  const certificateId=String(req.body?.certificateId||'').trim();
-  if(certificateId){
-    if(pgPool&&pgReady){try{const ex=(await pgPool.query('SELECT data FROM bdris_transactions WHERE user_id=$1 AND certificate_id=$2 LIMIT 1',[String(user.id),certificateId])).rows[0];if(ex?.data)return res.json({ok:true,balance:Number(user.balance)||0,charged:0,alreadyCharged:true,transactionId:ex.data.id,auth:sealUserPayload(user)});}catch(e){}}
-    const local=authStore.transactions||[];const ex=local.find(t=>t.userId===user.id&&t.certificateId===certificateId);if(ex)return res.json({ok:true,balance:Number(user.balance)||0,charged:0,alreadyCharged:true,transactionId:ex.id,auth:sealUserPayload(user)});
-  }
-  const amount=Number.isFinite(Number(user.previewRate))?Math.max(0,Number(user.previewRate)):Number(process.env.BASE_RATE||4); const balance=Number(user.balance)||0; if(balance<amount)return res.status(402).json({ok:false,error:`Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳${amount}।`,balance,required:amount,previewRate:amount});
-  user.balance=Math.round((balance-amount)*100)/100; const baseRate=Number(process.env.BASE_RATE||4); const tx={id:newToken(),type:'certificate_preview',userId:user.id,certificateId,amount,baseRate,commission:Math.max(0,amount-baseRate),createdAt:Date.now(),balanceAfter:user.balance};
-  authStore.transactions=Array.isArray(authStore.transactions)?authStore.transactions:[];authStore.transactions.push(tx);saveAuthStore(authStore);
-  if(pgPool&&pgReady){try{await pgPool.query('CREATE TABLE IF NOT EXISTS bdris_transactions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,certificate_id TEXT,data JSONB NOT NULL,created_at TIMESTAMPTZ DEFAULT NOW());');await pgPool.query('INSERT INTO bdris_transactions(id,user_id,certificate_id,data) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO NOTHING',[tx.id,String(user.id),certificateId,tx]);}catch(e){console.warn('Transaction PG save failed:',e.message);}}
-  res.json({ok:true,balance:user.balance,charged:amount,alreadyCharged:false,transactionId:tx.id,auth:sealUserPayload(user)});
+app.post('/api/balance/charge',requireAuth,(req,res)=>{
+  const user=authStore.users.find(u=>u.id===req.auth.userId);
+  if(!user) return res.status(404).json({ok:false,error:'User not found.'});
+  const amount=Math.max(0,Number.isFinite(Number(user.previewRate))?Number(user.previewRate):4);
+  user.balance=Number(user.balance)||0;
+  if(user.balance < amount) return res.status(402).json({ok:false,error:`Certificate Preview-এর জন্য পর্যাপ্ত Balance নেই। প্রয়োজন ৳${amount}।`,balance:user.balance,required:amount,previewRate:amount});
+  user.balance=Math.round((user.balance-amount)*100)/100;
+  saveAuthStore(authStore);
+  res.json({ok:true,balance:user.balance,charged:amount,previewRate:amount,auth:sealUserPayload(user)});
 });
 
-app.get('/api/subadmin/me',requireSubAdmin,(req,res)=>{const u=authStore.users.find(x=>x.id===req.auth.userId);res.json({ok:true,user:u?{id:u.id,username:u.username,name:u.name||'',rate:Number(u.rate||process.env.BASE_RATE||4)}:null,baseRate:Number(process.env.BASE_RATE||4)});});
-app.get('/api/subadmin/customers',requireSubAdmin,(req,res)=>res.json({ok:true,customers:authStore.users.filter(u=>u.role==='customer'&&u.parentId===req.auth.userId).map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})}));
-app.post('/api/subadmin/customers',requireSubAdmin,(req,res)=>{const parent=authStore.users.find(u=>u.id===req.auth.userId&&u.role==='subadmin');if(!parent)return res.status(404).json({ok:false,error:'Sub Admin not found.'});const {username,password,name='',rate}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const base=Number(process.env.BASE_RATE||4);const r=Number.isFinite(Number(rate))?Math.max(base,Number(rate)):Math.max(base,Number(parent.rate)||base);const user={id:newToken().slice(0,16),username:String(username),name:String(name),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:r,rate:r,role:'customer',parentId:parent.id};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
-app.patch('/api/subadmin/customers/:id',requireSubAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id&&u.role==='customer'&&u.parentId===req.auth.userId);if(!user)return res.status(404).json({ok:false,error:'Customer not found.'});const base=Number(process.env.BASE_RATE||4);if(req.body.setRate!==undefined){const n=Number(req.body.setRate);if(!Number.isFinite(n)||n<base)return res.status(400).json({ok:false,error:'Rate cannot be below base rate.'});user.rate=n;user.previewRate=n;}if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=n;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe});});
-function requireSubAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='subadmin')return res.status(403).json({ok:false,error:'Sub Admin access required.'});req.auth=session;next();}
-app.get('/api/admin/subadmins',requireAdmin,(req,res)=>res.json({ok:true,subadmins:(authStore.users||[]).filter(u=>u.role==='subadmin').map(u=>{const {passwordHash,...safe}=u;return safe;})}));
-app.post('/api/admin/subadmins',requireAdmin,(req,res)=>{const {username,password,name='',rate}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const base=Number(process.env.BASE_RATE||4);const r=Number.isFinite(Number(rate))?Math.max(base,Number(rate)):base;const user={id:newToken().slice(0,16),username:String(username),name:String(name),passwordHash:hashPassword(password),accessToken:'',enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:r,rate:r,role:'subadmin',parentId:''};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe});});
-app.get('/api/admin/commissions',requireAdmin,async(req,res)=>{let rows=[];if(pgPool&&pgReady){try{await pgPool.query('CREATE TABLE IF NOT EXISTS bdris_transactions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,certificate_id TEXT,data JSONB NOT NULL,created_at TIMESTAMPTZ DEFAULT NOW());');rows=(await pgPool.query('SELECT data FROM bdris_transactions')).rows.map(r=>r.data||{});}catch(_){}}if(!rows.length)rows=authStore.transactions||[];const subadmins=(authStore.users||[]).filter(u=>u.role==='subadmin').map(s=>({id:s.id,username:s.username,name:s.name||'',customers:(authStore.users||[]).filter(c=>c.role==='customer'&&c.parentId===s.id).length,commission:rows.filter(t=>t.userId&&((authStore.users||[]).find(c=>c.id===t.userId)?.parentId===s.id)).reduce((a,t)=>a+Number(t.commission||0),0)}));res.json({ok:true,subadmins});});
-app.get('/api/admin/users',requireAdmin,async (req,res)=>{
-  if(pgPool&&pgReady){try{const rows=(await pgPool.query('SELECT data FROM bdris_users ORDER BY updated_at ASC')).rows;const dbUsers=rows.map(r=>r.data||{}).filter(u=>u.id);const merged=new Map(dbUsers.map(u=>[String(u.id),u]));for(const u of authStore.users||[]){if(u.id)merged.set(String(u.id),u);}authStore.users=Array.from(merged.values());saveAuthStoreLocalOnly(authStore);}catch(e){console.warn('Admin user refresh failed:',e.message);}}
-  const users=(authStore.users||[]).map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;});
-  res.json({ok:true,users});
+app.get('/api/admin/users',requireAdmin,(req,res)=>{
+  // Always refresh the admin list from the persisted store before rendering.
+  // This keeps the Admin panel independent of whether a user has logged in.
+  // No user-login action is required to make an already-created user visible.
+  try{
+    const diskStore=loadAuthStore();
+    if(Array.isArray(diskStore.users)){
+      // Admin list must always reflect the complete persisted user store.
+      // Replace the in-memory collection from disk so users are visible even
+      // when they have never logged in during the current server process.
+      authStore.users = diskStore.users;
+      for(const u of authStore.users){
+        if(!Number.isFinite(Number(u.balance))) u.balance=0;
+        if(!Number.isFinite(Number(u.previewRate)) || Number(u.previewRate)<0) u.previewRate=4;
+      }
+      saveAuthStore(authStore);
+    }
+  }catch(_){}
+  res.json({ok:true,users:(authStore.users||[]).map(u=>{const {passwordHash,...safe}=u;safe.auth=sealUserPayload(u);return safe;})});
 });
-
-app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:Number(process.env.BASE_RATE||4),rate:Number(process.env.BASE_RATE||4),role:'customer',parentId:''};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
+app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};if(!username||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(authStore.users.some(u=>u.username===username))return res.status(409).json({ok:false,error:'Username already exists.'});const user={id:newToken().slice(0,16),username,name,passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:4};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,...safe}=user;res.json({ok:true,user:safe,link:`?access=${user.accessToken}&uid=${encodeURIComponent(user.id)}&auth=${encodeURIComponent(sealUserPayload(user))}`});});
 app.patch('/api/admin/users/:id',requireAdmin,(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword)user.passwordHash=hashPassword(req.body.newPassword);if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n))return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}if(req.body.setPreviewRate!==undefined){const n=Number(req.body.setPreviewRate);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid preview rate.'});user.previewRate=Math.round(n*100)/100;}saveAuthStore(authStore);const {passwordHash,...safe}=user;safe.auth=sealUserPayload(user);res.json({ok:true,user:safe});});
 app.delete('/api/admin/users/:id',requireAdmin,(req,res)=>{const i=authStore.users.findIndex(u=>u.id===req.params.id);if(i<0)return res.status(404).json({ok:false,error:'User not found.'});authStore.users.splice(i,1);saveAuthStore(authStore);res.json({ok:true});});
 app.use('/api',(req,res,next)=>{if(req.path.startsWith('/auth/'))return next();return requireAuth(req,res,next);});
@@ -175,17 +133,6 @@ app.use('/api',(req,res,next)=>{if(req.path.startsWith('/auth/'))return next();r
 /* =========================================================
    SHARED PDF IMAGE LIBRARY
 ========================================================= */
-app.get('/api/pdf-layout',(req,res)=>res.json({ok:true,layout:pdfLayoutStore,defaults:PDF_LAYOUT_DEFAULTS}));
-app.get('/api/admin/pdf-layout',requireAdmin,(req,res)=>res.json({ok:true,layout:pdfLayoutStore,defaults:PDF_LAYOUT_DEFAULTS}));
-app.patch('/api/admin/pdf-layout',requireAdmin,(req,res)=>{
-  const incoming=req.body?.layout||{};
-  const next={};
-  for(const key of Object.keys(PDF_LAYOUT_DEFAULTS)){
-    const p=incoming[key]||pdfLayoutStore[key]||PDF_LAYOUT_DEFAULTS[key];
-    next[key]={x:Math.max(-30,Math.min(30,Number(p.x)||0)),y:Math.max(-30,Math.min(30,Number(p.y)||0))};
-  }
-  pdfLayoutStore=next; savePDFLayout(pdfLayoutStore); res.json({ok:true,layout:pdfLayoutStore});
-});
 app.get('/api/pdf-images', (req,res)=>{
   res.set('Cache-Control','no-store');
   const store=loadPDFImageLibrary();
@@ -382,9 +329,6 @@ async function setInputValue(element, value) {
 }
 
 
-app.post('/api/certificates',requireAuth,async(req,res)=>{const userId=req.auth.userId;const rec={id:String(req.body?.id||newToken()),userId,data:req.body?.data||{},certificateType:req.body?.certificateType||'new',registrationMode:req.body?.registrationMode||'birth',selectedBengaliFont:req.body?.selectedBengaliFont||'',currentData:req.body?.currentData||null,selectedPDFImageId:req.body?.selectedPDFImageId||'',selectedPDFImageName:req.body?.selectedPDFImageName||'',imagePositionX:Number(req.body?.imagePositionX||105),imagePositionY:Number(req.body?.imagePositionY||247),imageZoom:Number(req.body?.imageZoom||100),imageWidth:Number(req.body?.imageWidth||24),imageHeight:Number(req.body?.imageHeight||10),createdAt:Number(req.body?.createdAt||Date.now()),pdfBase64:String(req.body?.pdfBase64||'')};authStore.certificates=Array.isArray(authStore.certificates)?authStore.certificates:[];const i=authStore.certificates.findIndex(x=>x.id===rec.id);if(i>=0)authStore.certificates[i]=rec;else authStore.certificates.push(rec);saveAuthStore(authStore);if(pgPool&&pgReady){try{await pgPool.query('CREATE TABLE IF NOT EXISTS bdris_certificates (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,data JSONB NOT NULL,created_at TIMESTAMPTZ DEFAULT NOW());');await pgPool.query('INSERT INTO bdris_certificates(id,user_id,data) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,created_at=NOW()',[rec.id,String(userId),rec]);}catch(e){console.warn('Certificate history PG save failed:',e.message);}}res.json({ok:true,id:rec.id});});
-app.get('/api/certificates',requireAuth,async(req,res)=>{let rows=(authStore.certificates||[]).filter(x=>x.userId===req.auth.userId);if(pgPool&&pgReady){try{await pgPool.query('CREATE TABLE IF NOT EXISTS bdris_certificates (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,data JSONB NOT NULL,created_at TIMESTAMPTZ DEFAULT NOW());');const q=(await pgPool.query('SELECT data FROM bdris_certificates WHERE user_id=$1 ORDER BY created_at DESC LIMIT 500',[String(req.auth.userId)])).rows.map(r=>r.data||{});if(q.length)rows=q;}catch(_){}}res.json({ok:true,certificates:rows});});
-
 /* =========================================================
    PDF GENERATE
 ========================================================= */
@@ -517,7 +461,7 @@ app.post('/api/init-search', async (req, res) => {
         page.on('request', request => {
             const type = request.resourceType();
             const url = request.url();
-            if (type === 'font' || type === 'media' || type === 'stylesheet' ||
+            if (type === 'font' || type === 'media' ||
                 (type === 'image' && !/captcha/i.test(url))) {
                 request.abort().catch(() => {});
             } else {
@@ -529,14 +473,14 @@ app.post('/api/init-search', async (req, res) => {
             'https://everify.bdris.gov.bd/',
             {
                 waitUntil: 'domcontentloaded',
-                timeout: 12000
+                timeout: 20000
             }
         );
 
         await page.waitForSelector(
             'input',
             {
-                timeout: 5000
+                timeout: 8000
             }
         );
 
@@ -626,7 +570,7 @@ app.post('/api/init-search', async (req, res) => {
 
             'img[alt*="captcha" i]'
 
-        ], 3500);
+        ], 5000);
 
 
         if (!captcha) {
@@ -1610,10 +1554,8 @@ app.get('/', (req, res) => {
 const port =
     process.env.PORT || 3000;
 
-async function startServer(){
-  await initPostgres();
-  getSharedBDRISBrowser().catch(()=>{});
-  app.listen(
+
+app.listen(
     port,
     '0.0.0.0',
     () => {
@@ -1636,6 +1578,4 @@ async function startServer(){
         console.log('');
 
     }
-  );
-}
-startServer().catch(err=>{console.error('Fatal startup error:',err);process.exit(1);});
+);
