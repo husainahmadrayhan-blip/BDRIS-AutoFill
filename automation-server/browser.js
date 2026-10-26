@@ -1,9 +1,8 @@
 'use strict';
 
 const dns = require('node:dns').promises;
-const fs = require('node:fs');
 const net = require('node:net');
-const puppeteer = require('puppeteer');
+const { launchPuppeteerBrowser } = require('../puppeteer-runtime');
 
 class HumanVerificationRequiredError extends Error {
   constructor() {
@@ -79,31 +78,19 @@ function createBrowserService({ allowedHosts, executablePath, timeouts = {} }) {
     if (closing) throw new Error('Automation browser is shutting down.');
     if (!browserPromise) {
       browserPromise = (async () => {
-        const candidates = [
-          executablePath,
-          process.env.CHROME_PATH,
-          process.env.CHROMIUM_PATH,
-          '/usr/bin/google-chrome',
-          '/usr/bin/google-chrome-stable',
-          '/usr/bin/chromium',
-          '/usr/bin/chromium-browser'
-        ].filter(Boolean);
-        const resolved = candidates.find(candidate => fs.existsSync(candidate));
         const resolverRules = [];
         for (const hostname of allowedHosts) {
           const addresses = await validateUrl.resolveAddresses(hostname);
           const address = addresses.find(entry => net.isIPv4(entry.address)) || addresses[0];
           resolverRules.push(`MAP ${hostname} ${address.address}`);
         }
-        const options = {
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', `--host-resolver-rules=${resolverRules.join(',')}`]
-        };
-        if (resolved) options.executablePath = resolved;
         try {
-          const instance = await puppeteer.launch(options);
+          const instance = await launchPuppeteerBrowser({
+            executablePath,
+            extraArgs: [`--host-resolver-rules=${resolverRules.join(',')}`]
+          });
           instance.once('disconnected', () => { browserPromise = null; });
-          console.log(`[Automation] Chromium launched (${resolved ? 'configured executable' : 'Puppeteer managed executable'}).`);
+          console.log('[Automation] Puppeteer-managed Chromium launched.');
           return instance;
         } catch (error) {
           browserPromise = null;

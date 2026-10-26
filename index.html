@@ -106,9 +106,12 @@ body:not(.login-locked) .cert-preview{background:#050b10!important;border-color:
 
 <style id="clean-modern-final-ui">
 /* FINAL CLEAN MODERN BLUE/WHITE UI - preserves existing field IDs and JS */
-@font-face{font-family:'NikoshLight';src:url('/fonts/NotoSerifBengali-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:'SolaimanLipi';src:url('/fonts/NotoSansBengali-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:'SutonnyOMJ';src:url('/fonts/NotoSerifBengali-Condensed.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif Bengali';src:url('/fonts/NotoSerifBengali-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif Bengali';src:url('/fonts/NotoSerifBengali-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif Bengali Condensed';src:url('/fonts/NotoSerifBengali-Condensed.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans Bengali';src:url('/fonts/NotoSansBengali-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'FreeSerif Bengali';src:url('/fonts/FreeSerif.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'FreeSerif Bengali';src:url('/fonts/FreeSerifBold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
 body:not(.login-locked){
   background:#f4f7fb !important;color:#18212b !important;
   font-family:"Noto Sans Bengali","Hind Siliguri",Arial,sans-serif !important;
@@ -663,9 +666,12 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
   <div class="top-setting-card">
     <h3>🔤 বাংলা ফন্ট</h3>
     <select id="font-selector" onchange="changeBengaliFont()">
-      <option value="NikoshLight">NikoshLight</option>
-      <option value="SolaimanLipi">SolaimanLipi</option>
-      <option value="SutonnyOMJ">SutonnyOMJ</option>
+      <option value="NotoSerifBengali-Regular">Noto Serif Bengali - Regular</option>
+      <option value="NotoSerifBengali-Bold">Noto Serif Bengali - Bold</option>
+      <option value="NotoSansBengali-Regular">Noto Sans Bengali - Regular</option>
+      <option value="FreeSerif-Regular">FreeSerif Bengali - Regular</option>
+      <option value="FreeSerif-Bold">FreeSerif Bengali - Bold</option>
+      <option value="NotoSerifBengali-Condensed">Noto Serif Bengali - Condensed</option>
     </select>
     <div class="small">PDF-তেও এই ফন্ট ব্যবহার হবে।</div>
   </div>
@@ -774,7 +780,7 @@ let currentQRImage = "";
 let currentQRLabel = "";
 let certificateType = 'new';
 let registrationMode = 'birth';
-let selectedBengaliFont = 'NikoshLight';
+let selectedBengaliFont = 'NotoSerifBengali-Regular';
 let editingHistoryId = null;
 const PDF_HISTORY_DB_BASE = 'BDRIS_PDF_HISTORY_V1';
 function getPDFHistoryDBName(){ return PDF_HISTORY_DB_BASE + '_' + (localStorage.getItem('BDRIS_USER_ID') || 'guest'); }
@@ -1277,12 +1283,28 @@ async function fontDataUrl(path) {
     return EMBEDDED_BENGALI_FONT_DATA_URL;
   }
 }
+const BENGALI_FONT_DEFINITIONS = {
+  'NotoSerifBengali-Regular': {family:'Noto Serif Bengali',path:'/fonts/NotoSerifBengali-Regular.ttf',weight:400},
+  'NotoSerifBengali-Bold': {family:'Noto Serif Bengali',path:'/fonts/NotoSerifBengali-Bold.ttf',weight:700},
+  'NotoSansBengali-Regular': {family:'Noto Sans Bengali',path:'/fonts/NotoSansBengali-Regular.ttf',weight:400},
+  'FreeSerif-Regular': {family:'FreeSerif Bengali',path:'/fonts/FreeSerif.ttf',weight:400},
+  'FreeSerif-Bold': {family:'FreeSerif Bengali',path:'/fonts/FreeSerifBold.ttf',weight:700},
+  'NotoSerifBengali-Condensed': {family:'Noto Serif Bengali Condensed',path:'/fonts/NotoSerifBengali-Condensed.ttf',weight:400}
+};
+const LEGACY_BENGALI_FONT_ALIASES = {
+  NikoshLight:'NotoSerifBengali-Regular',
+  SolaimanLipi:'NotoSansBengali-Regular',
+  SutonnyOMJ:'NotoSerifBengali-Condensed'
+};
+function normalizeBengaliFont(value){
+  const candidate=LEGACY_BENGALI_FONT_ALIASES[value]||value;
+  return BENGALI_FONT_DEFINITIONS[candidate]?candidate:'NotoSerifBengali-Regular';
+}
+function getBengaliFontDetails(value=selectedBengaliFont){
+  return BENGALI_FONT_DEFINITIONS[normalizeBengaliFont(value)];
+}
 function selectedBengaliFontPath(){
-  return ({
-    NikoshLight:'/fonts/NotoSerifBengali-Regular.ttf',
-    SolaimanLipi:'/fonts/NotoSansBengali-Regular.ttf',
-    SutonnyOMJ:'/fonts/NotoSerifBengali-Condensed.ttf'
-  }[selectedBengaliFont] || '/fonts/NotoSerifBengali-Regular.ttf');
+  return getBengaliFontDetails().path;
 }
 
 async function cropImageDataUrl(sourceUrl, x, y, width, height) {
@@ -1451,15 +1473,14 @@ function setCertificateType(type) {
 
 function changeBengaliFont() {
   const select = $('font-selector');
-  selectedBengaliFont = select ? select.value : 'NikoshLight';
-  // Use the user's selected font when it exists on the device; otherwise
-  // fall back to the bundled embedded Bengali font. Do not force one font
-  // over the user's selection.
-  const family = "'" + selectedBengaliFont + "', 'BDRIS Mobile Bengali', 'Noto Sans Bengali', Arial, sans-serif";
+  selectedBengaliFont = normalizeBengaliFont(select ? select.value : selectedBengaliFont);
+  if (select) select.value = selectedBengaliFont;
+  const font = getBengaliFontDetails(selectedBengaliFont);
+  const family = "'" + font.family + "', 'BDRIS Mobile Bengali', 'Noto Sans Bengali', Arial, sans-serif";
   document.querySelectorAll('#in_nameBn,#in_fatherBn,#in_motherBn,#in_fatherNationalityBn,#in_motherNationalityBn,#in_pobBn,#in_addrBn').forEach(el => {
     el.style.fontFamily=family;
     document.documentElement.style.setProperty('--bdris-bn-font', family);
-    el.style.fontWeight='400';
+    el.style.fontWeight=String(font.weight);
     el.style.fontSize='13px';
     el.style.lineHeight='1.42';
   });
@@ -1796,7 +1817,7 @@ async function editPDFHistory(id) {
     certificateType = record.certificateType || 'new';
     setCertificateType(certificateType);
     setRegistrationMode(record.registrationMode || 'birth');
-    selectedBengaliFont = record.selectedBengaliFont || 'NikoshLight';
+    selectedBengaliFont = normalizeBengaliFont(record.selectedBengaliFont);
     const fontSelect = $('font-selector');
     if (fontSelect) fontSelect.value = selectedBengaliFont;
     changeBengaliFont();
@@ -1983,7 +2004,8 @@ async function generatePDF(options = {}) {
   const addrEn = registrationMode === 'death' ? '' : formatCertificateAddress($("in_addrEn").value, 'en');
   const deathCauseBn = $("in_deathCauseBn")?.value.trim() || '';
   const deathCauseEn = $("in_deathCauseEn")?.value.trim() || '';
-  const selectedFontCSS = "'BDRIS Selected Bengali','" + selectedBengaliFont + "','BDRIS Mobile Bengali','Noto Sans Bengali',Arial,sans-serif";
+  const selectedFont = getBengaliFontDetails();
+  const selectedFontCSS = "'BDRIS Selected Bengali','" + selectedFont.family + "','BDRIS Mobile Bengali','Noto Sans Bengali',Arial,sans-serif";
   const certificateStatus = certificateType === 'corrected' ? {bn:'সংশোধিত/',en:'Corrected'} : certificateType === 'duplicate' ? {bn:'প্রতিলিপি/',en:'Duplicate'} : {bn:'',en:''};
 
   const css = `
@@ -2003,7 +2025,7 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
   image-rendering: auto;
 }
 .content-area { padding: 35mm 22mm 20mm 22mm; height: 100%; position: relative; z-index: 1; }
-.bn-text, .label-bn-main, .address-bn-font, .value-bn-main, .value-bn-shift { font-family: ${selectedFontCSS}; font-weight: 400 !important; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+.bn-text, .label-bn-main, .address-bn-font, .value-bn-main, .value-bn-shift { font-family: ${selectedFontCSS}; font-weight: ${selectedFont.weight} !important; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 .serif-text { font-family: 'BDRIS Times', 'Liberation Serif', 'Times New Roman', Times, serif; font-synthesis: none; }
 .header-section { position: relative; width: 100%; margin-bottom: 2mm; }
 .qr-container { position: absolute; left: -5mm; top: -11mm; width: 28mm; display: flex; flex-direction: column; align-items: center; z-index: 10; }
@@ -2013,7 +2035,7 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .barcode-box { position: absolute; right: 4mm; top: -12mm; width: 50mm; height: 6mm; display: flex; align-items: center; justify-content: center; z-index: 10; overflow: hidden; background: transparent; }
 .barcode-box svg { width: 100% !important; height: 100% !important; display: block; shape-rendering: crispEdges; }
 .cert-status-box { position: absolute; right: 4mm; top: -24mm; border: 1pt solid #000; display: flex; align-items: center; justify-content: center; min-width: 35mm; height: 7mm; padding: 0 2mm; overflow: hidden; white-space: nowrap; line-height: 1; z-index: 20; }
-.bn-status { font-family: ${selectedFontCSS}; font-size: 9.5pt; font-weight: 400; }
+.bn-status { font-family: ${selectedFontCSS}; font-size: 9.5pt; font-weight: ${selectedFont.weight}; }
 .cert-status-box > span:last-child { font-family: 'BDRIS Times', 'Liberation Serif', 'Times New Roman', Times, serif; font-size: 8pt; font-weight: 400; margin-left: 1mm; }
 .header-container { display: block; text-align: center; width: 100%; padding-left: 14mm; margin-left: -3mm; }
 .gov-title { font-size: 13pt; font-weight: normal; margin: 0 0 8px 0; text-align: center; }
@@ -2076,7 +2098,7 @@ body { background: #fff; color: #000; font-family: Arial, 'BDRIS Bengali', 'Noto
 .bottom-note { position: absolute; z-index: 1; bottom: 29mm; left: 0; width: 100%; text-align: center; font-size: 8.5pt; color: #000; font-family: Arial, sans-serif; }
 @font-face { font-family: 'BDRIS Bengali'; src: url('/fonts/NotoSansBengali-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
 @font-face { font-family: 'BDRIS Mobile Bengali'; src: url('/fonts/NotoSansBengali-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
-@font-face { font-family: 'BDRIS Selected Bengali'; src: local('${selectedBengaliFont}'), url('${bengaliRegularFont}') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'BDRIS Selected Bengali'; src: url('${bengaliRegularFont}'); font-weight: ${selectedFont.weight}; font-style: normal; font-display: block; }
 @font-face { font-family: 'BDRIS Times'; src: url('/fonts/LiberationSerif-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
 @font-face { font-family: 'BDRIS Times'; src: url('/fonts/LiberationSerif-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: block; }
 `;

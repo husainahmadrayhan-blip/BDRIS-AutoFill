@@ -23,10 +23,7 @@ const os = require('os');
   }
 })();
 
-// Keep Puppeteer cache identical during build and runtime. This must be set
-// BEFORE requiring Puppeteer so its configuration resolves the same cache.
-process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
-const puppeteer = require('puppeteer');
+const { launchPuppeteerBrowser } = require('./puppeteer-runtime');
 const crypto = require('crypto');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -55,7 +52,9 @@ app.get('/fonts/:file', (req, res) => {
     'NotoSerifBengali-SemiBold.ttf',
     'NotoSerifBengali-Bold.ttf',
     'NotoSansBengali-Regular.ttf',
-    'NotoSerifBengali-Condensed.ttf'
+    'NotoSerifBengali-Condensed.ttf',
+    'FreeSerif.ttf',
+    'FreeSerifBold.ttf'
   ]);
   if (!allowed.has(file)) return res.status(404).send('Not found');
   res.sendFile(path.join(__dirname, 'fonts', file));
@@ -880,47 +879,7 @@ app.get('/api/pdf-images/:id', (req,res)=>{
   res.json({ok:true,id:image.id,name:image.name,updatedAt:image.updatedAt,mimeType:image.mimeType||'image/jpeg',dataUrl:`data:${image.mimeType||'image/jpeg'};base64,${data}`});
 });
 
-const browserLaunchOptions = {
-    headless: true,
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage'
-    ]
-};
-
-// Puppeteer 25 may expose executablePath() as a Promise in some environments.
-// Resolve it before passing it to launch(), otherwise Chromium receives
-// "[object Promise]" as the executable path.
-async function launchBrowser() {
-    const cacheDir = path.join(__dirname, '.cache', 'puppeteer');
-    process.env.PUPPETEER_CACHE_DIR = cacheDir;
-    const candidates = [
-        process.env.PUPPETEER_EXECUTABLE_PATH,
-        process.env.CHROME_PATH,
-        process.env.CHROMIUM_PATH,
-        process.platform === 'win32' ? path.join(process.env.PROGRAMFILES || 'C:\\Program Files','Google','Chrome','Application','chrome.exe') : null,
-        process.platform === 'win32' ? path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)','Google','Chrome','Application','chrome.exe') : null,
-        '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'
-    ].filter(Boolean);
-    let executablePath = candidates.find(p => typeof p === 'string' && fs.existsSync(p)) || null;
-    if (!executablePath) {
-        try {
-            const resolved = await puppeteer.executablePath();
-            if (typeof resolved === 'string' && resolved && fs.existsSync(resolved)) executablePath = resolved;
-        } catch (_) {}
-    }
-    const options = { ...browserLaunchOptions };
-    if (executablePath) options.executablePath = executablePath;
-    try {
-        return await puppeteer.launch(options);
-    } catch (firstError) {
-        if (executablePath) {
-            try { return await puppeteer.launch({ ...browserLaunchOptions }); } catch (_) {}
-        }
-        throw new Error('Chrome/Chromium could not be started. Install Chrome or run `npx puppeteer browsers install chrome`. Original error: ' + (firstError?.message || firstError));
-    }
-}
+const launchBrowser = launchPuppeteerBrowser;
 
 async function findFirst(page, selectors, timeout = 10000) {
     // Check all candidate selectors in one browser-side poll instead of waiting
