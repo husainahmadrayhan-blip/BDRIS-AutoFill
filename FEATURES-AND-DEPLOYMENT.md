@@ -30,7 +30,8 @@ Set `DATABASE_URL`, `AUTH_SECRET`, `ADMIN_USERNAME`, and a strong `ADMIN_PASSWOR
 - Keep the existing `AUTH_SECRET` to preserve generated login links. The admin credentials are initialized in `fil_admin_settings` only when that setting does not exist; changing `ADMIN_PASSWORD` alone does not change an already-initialized database admin password.
 - The server creates missing tables with `CREATE TABLE IF NOT EXISTS`; it does not run a table-drop or reset migration at startup. Do not point Render at a different Neon project/branch.
 - After deploying, check `https://<service>.onrender.com/api/health` and confirm it reports `database: "neon-connected"`. Never paste connection strings or passwords into logs, commits, or support requests.
-- Render's ephemeral filesystem does not preserve local PDF image uploads or JSON fallback storage. Keep PostgreSQL configured and use persistent storage or the documented image export workflow for uploaded assets.
+- PDF image storage uses `/var/data/pdf-images` only when a Render persistent disk is detected at `/var/data` and a write probe succeeds. Otherwise it falls back to the OS temporary directory and logs that this storage is ephemeral. The health endpoint reports `pdfImageStorage.writable` and `pdfImageStorage.persistent`; temporary storage does not preserve images across restarts or deploys.
+- Render's ephemeral filesystem does not preserve local PDF image uploads or JSON fallback storage. Keep PostgreSQL configured and use a mounted persistent disk or the documented image export workflow for uploaded assets.
 
 ## Checks performed
 - `npm test` passed: `node --check index.js` and `node --check server.js`.

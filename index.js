@@ -30,6 +30,7 @@ const puppeteer = require('puppeteer');
 const crypto = require('crypto');
 const cors = require('cors');
 const { Pool } = require('pg');
+const { resolvePdfImageStorage } = require('./pdf-image-storage');
 const app = express();
 
 app.use(cors());
@@ -440,28 +441,20 @@ app.post('/api/debug-geo', async (req, res) => {
 });
 
 
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now(),database:pool?(dbReady?'neon-connected':'neon-connecting'):'local-json'}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now(),database:pool?(dbReady?'neon-connected':'neon-connecting'):'local-json',pdfImageStorage:{writable:true,persistent:PDF_IMAGE_STORAGE_PERSISTENT}}));
 app.get('/api/runtime/browser',(req,res)=>res.json({ok:true,cacheDir:process.env.PUPPETEER_CACHE_DIR,serviceDir:__dirname,node:process.version}));
 
 // Public lightweight health-check endpoint for uptime monitoring.
 // Kept outside authentication so monitoring services can reach it.
 app.get('/ping',(req,res)=>res.status(200).send('Server is active'));
 
-// PDF image files and library metadata must live together. On Render, default to
-// the Persistent Disk mount (/var/data); locally, keep the existing project path.
-// You may override this with PDF_IMAGE_STORAGE_DIR in any hosting environment.
-const DEFAULT_LOCAL_PDF_IMAGE_DIR = path.join(__dirname, 'data', 'pdf-images');
-const DEFAULT_RENDER_PDF_IMAGE_DIR = path.join('/var/data', 'pdf-images');
-const PDF_IMAGE_DIR = path.resolve(
-  process.env.PDF_IMAGE_STORAGE_DIR ||
-  (String(process.env.RENDER || '').toLowerCase() === 'true'
-    ? DEFAULT_RENDER_PDF_IMAGE_DIR
-    : DEFAULT_LOCAL_PDF_IMAGE_DIR)
-);
+// Use /var/data only when Render confirms that the persistent disk is mounted
+// and the directory passes a real write probe; otherwise use ephemeral storage.
+const pdfImageStorage = resolvePdfImageStorage();
+const PDF_IMAGE_DIR = pdfImageStorage.directory;
+const PDF_IMAGE_STORAGE_PERSISTENT = pdfImageStorage.persistent;
 const PDF_IMAGE_INDEX = path.join(PDF_IMAGE_DIR, 'library.json');
-fs.mkdirSync(PDF_IMAGE_DIR, { recursive: true });
-console.log(`[MAKE PDF IMAGE] storage path: ${PDF_IMAGE_DIR}`);
-console.log('[MAKE PDF IMAGE] Render-এর redeploy-এ image রাখতে Persistent Disk mount /var/data লাগবে.');
+console.log(`[MAKE PDF IMAGE] storage initialized; persistent=${PDF_IMAGE_STORAGE_PERSISTENT}`);
 
 // V195: import the original standalone Make image registry without replacing user uploads.
 const ORIGINAL_PDF_IMAGE_DIR = path.join(__dirname, 'original-office-images');
