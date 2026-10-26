@@ -1,0 +1,14 @@
+FIL NEW ADMIN PANEL + NEON POSTGRESQL SETUP
+
+1. Copy .env.example to .env in the same folder as index.js.
+2. Set DATABASE_URL to the Neon PostgreSQL pooled connection string.
+3. Set AUTH_SECRET to a stable random secret and set a strong ADMIN_PASSWORD before first database startup.
+4. Keep LOCAL_DIRECT_MODE=false so Username/Password authentication remains enabled.
+5. Run: npm install, npm test, npm start. Node.js 22.12+ is required.
+6. Startup logs must say [Neon] Connected and Database: Neon PostgreSQL connected. If DATABASE_URL is set but Neon cannot connect, startup fails instead of silently falling back to local JSON.
+
+Tables are created automatically: fil_users, fil_admin_settings, fil_balance_history, fil_payments, fil_income. If fil_users is empty on first setup, existing .private/users.json accounts are migrated once. User balances and admin balance history are stored in Neon. Recharge requests are pending until reviewed by an admin; approval adds balance. This is manual payment verification, not a payment-gateway integration.
+
+Never commit .env or share DATABASE_URL/AUTH_SECRET/admin credentials. For Render, configure these in the service Environment settings. PDF/image files still need persistent file storage separately if the host filesystem is ephemeral.
+
+Actual Neon connectivity cannot be verified until you provide your own DATABASE_URL in .env and start the server.

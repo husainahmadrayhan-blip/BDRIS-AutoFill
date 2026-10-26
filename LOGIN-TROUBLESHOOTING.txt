@@ -6,3 +6,5 @@ LOGIN / Failed to fetch fix
 4. User access link (?access=...) দিয়ে login করুন।
 
 "Failed to fetch" সাধারণত server চালু না থাকলে বা index.html সরাসরি file:// দিয়ে খুললে হয়।
+
+Admin Login এবং Main Application-এর User Login আলাদা। Admin credentials দিয়ে Main App-এর user API session তৈরি হয় না। Admin panel থেকে user তৈরি করে সেই user-এর access link কপি করুন। Main App-এ "Login required" এলে user link দিয়ে login করুন; server restart হলে in-memory user session invalid হয়, তাই একই link দিয়ে আবার login করতে হবে।
