@@ -1188,15 +1188,36 @@ function normalizeOfficeImageKey(value){
     .replace(/\s+/g,'')
     .replace(/[^a-z0-9\u0980-\u09ff-]/g,'');
 }
+function extractRegistrarZoneNumber(value){
+  const v=String(value||'').normalize('NFKC').replace(/[০-৯]/g,d=>String('০১২৩৪৫৬৭৮৯'.indexOf(d)));
+  const m=v.match(/(?:zone|জোন)\s*[-:#]?\s*0*(\d{1,2})/i);
+  return m ? String(Number(m[1])).padStart(2,'0') : '';
+}
 async function autoSelectRegistrarOfficeImage(){
   const toggle=$('autoSelectOfficeImage');
   if(!toggle?.checked)return;
   const office=String($('in_registrationOffice')?.value||currentData?.registrationOffice||currentData?.registrationOfficeName||'').trim();
   if(!office){status('Registrar Office পাওয়া যায়নি। Image Library থেকে manually select করুন।','err');return;}
+  if(!Array.isArray(pdfImageLibrary)||!pdfImageLibrary.length){
+    await loadPDFImageLibrary();
+    if(!Array.isArray(pdfImageLibrary)||!pdfImageLibrary.length){status('Image Library খালি বা লোড হয়নি। আগে Zone Image আপলোড করুন।','err');return;}
+  }
   const key=normalizeOfficeImageKey(office);
-  const matches=pdfImageLibrary.filter(x=>x?.hasImage&&normalizeOfficeImageKey(x.name)===key);
+  const available=pdfImageLibrary.filter(x=>x?.hasImage);
+  let matches=available.filter(x=>normalizeOfficeImageKey(x.name)===key);
+  // Accept common office/image naming differences (Zone-07, Zone 07, ZONE07).
   if(matches.length!==1){
-    status(matches.length>1?'একাধিক office image match হয়েছে। ভুল image এড়াতে manually select করুন।':'এই Registrar Office-এর exact Image match পাওয়া যায়নি। Manually select করুন।','err');
+    const zone=extractRegistrarZoneNumber(office);
+    if(zone){
+      const zoneMatches=available.filter(x=>{
+        const imageZone=extractRegistrarZoneNumber(x.name);
+        return imageZone===zone;
+      });
+      if(zoneMatches.length) matches=zoneMatches;
+    }
+  }
+  if(matches.length!==1){
+    status(matches.length>1?'একই Zone-এর একাধিক Image পাওয়া গেছে। Image Library-তে নাম আলাদা করুন।':'এই Registrar Office/Zone-এর Image মেলেনি। Image Library-তে নাম Zone-07, Zone-08 বা Zone-09-এর মতো দিন এবং ছবিটি আপলোড আছে নিশ্চিত করুন।','err');
     return;
   }
   await selectPDFImage(matches[0]);
