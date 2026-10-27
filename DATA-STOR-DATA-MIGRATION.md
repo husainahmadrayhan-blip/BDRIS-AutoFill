@@ -25,6 +25,12 @@ Use the actual connection strings from the two database owners' private environm
 
 The script reports source row count, rows scanned, inserted rows, rows skipped/already present, and the target row count. It exits with an error if the source or target connection is missing or the source table cannot be read.
 
+## CSV import from the Admin Panel
+
+If the source data has already been exported as CSV, sign in to the AutoFill Admin Panel at `/admin.html`, open **Data Stor CSV Import**, choose the CSV file, review its headers/content, then click **Import records**. The Admin Panel calls the protected `/api/data-stor/admin/import` endpoint using the existing Admin session. The current record count is shown on the same page.
+
+Supported headers include `BRN`, `DOB`, `বাংলা নাম` / `name_bn`, `English Name` / `name_en`, and `Gender`. BRNs must contain exactly 17 digits. The import uses a single PostgreSQL transaction, inserts new BRNs and updates rows with matching BRNs. Use a UTF-8 CSV file under 45 MB. Review the import summary for inserted, updated, skipped, invalid-date, invalid-BRN, and duplicate rows. Keep the CSV file private because it contains personal birth-registration data; do not commit it to GitHub.
+
 ## Verify
 
 After migration, log in to AutoFill and open the Data Stor card. The stats should show a non-zero record count. Try searching by a known DOB or a Bengali/English name. When both names are supplied, the updated search matches either name field, while the DOB and gender filters remain restrictive.
