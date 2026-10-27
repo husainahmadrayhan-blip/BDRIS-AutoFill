@@ -769,8 +769,7 @@ app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
  const dobInput=String(req.query.dob||'').trim(),bn=String(req.query.bn||'').trim(),en=String(req.query.en||'').trim(),gender=String(req.query.gender||'all').toLowerCase();
  if(!dobInput&&!bn&&!en)return res.status(400).json({ok:false,error:'জন্মতারিখ অথবা নাম লিখুন।'});
  const where=[],vals=[];if(dobInput){const d=dataStorDob(dobInput);if(!d)return res.status(400).json({ok:false,error:'জন্মতারিখ সঠিক ফরম্যাটে দিন।'});vals.push(d);where.push('dob=$'+vals.length+'::date');}
- if(bn){vals.push('%'+bn+'%');where.push('name_bn ILIKE $'+vals.length);}
- if(en){vals.push('%'+en+'%');where.push('name_en ILIKE $'+vals.length);}
+ if(bn||en){const nameParts=[];if(bn){vals.push('%'+bn+'%');nameParts.push('name_bn ILIKE $'+vals.length);}if(en){vals.push('%'+en+'%');nameParts.push('name_en ILIKE $'+vals.length);}where.push('('+nameParts.join(' OR ')+')');}
  if(['male','female','other'].includes(gender)){if(gender==='other')where.push("lower(gender) NOT IN ('male','female')");else{vals.push(gender);where.push('lower(gender)=$'+vals.length);}}
  const clause=where.length?' WHERE '+where.join(' AND '):'',page=Math.max(1,parseInt(req.query.page||'1',10)||1),limit=Math.max(10,Math.min(100,parseInt(req.query.limit||'30',10)||30));
  try{const count=await pool.query('SELECT count(*)::int total FROM birth_records'+clause,vals);
