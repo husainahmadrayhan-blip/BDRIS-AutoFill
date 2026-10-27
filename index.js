@@ -54,7 +54,9 @@ app.get('/fonts/:file', (req, res) => {
     'NotoSansBengali-Regular.ttf',
     'NotoSerifBengali-Condensed.ttf',
     'FreeSerif.ttf',
-    'FreeSerifBold.ttf'
+    'FreeSerifBold.ttf',
+    'SolaimanLipi-Thin.ttf',
+    'SolaimanLipi-Normal.ttf'
   ]);
   if (!allowed.has(file)) return res.status(404).send('Not found');
   res.sendFile(path.join(__dirname, 'fonts', file));
@@ -702,6 +704,34 @@ async function forwardAutomationRequest(req,res,method,pathSuffix,body){
 app.post('/api/automation/jobs',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'POST','/api/jobs',req.body));
 app.get('/api/automation/jobs/:id',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'GET',`/api/jobs/${encodeURIComponent(req.params.id)}`));
 app.post('/api/automation/jobs/:id/cancel',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'POST',`/api/jobs/${encodeURIComponent(req.params.id)}/cancel`,{}));
+
+app.get('/api/services',requireUserAuth,(req,res)=>{
+ const user=authStore.users.find(u=>String(u.id)===String(req.auth.userId));
+ if(!user)return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
+ const rate=Math.max(0,Math.round(Number(user.previewRate??4)*100)/100);
+ res.set('Cache-Control','no-store');
+ res.json({ok:true,services:[{id:'birth-certificate',name:'Birth Certificate PDF',icon:'📄',rate,previewFree:true,chargeOn:'successful-download'}],balance:Number(user.balance)||0});
+});
+app.get('/api/account/history',requireUserAuth,async(req,res)=>{
+ const user=authStore.users.find(u=>String(u.id)===String(req.auth.userId));
+ if(!user)return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
+ if(!pool||!dbReady)return res.json({ok:true,local:true,transactions:[],recharges:[],work:[]});
+ try{
+  const uid=String(user.id);
+  const [balances,payments,charges]=await Promise.all([
+   pool.query('SELECT id,action,change_amount,balance_after,note,created_at FROM fil_balance_history WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100',[uid]),
+   pool.query('SELECT id,amount,method,transaction_ref,status,created_at,reviewed_at FROM fil_payments WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100',[uid]),
+   pool.query('SELECT idempotency_key,amount,balance_after,created_at FROM fil_usage_charges WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100',[uid])
+  ]);
+  res.set('Cache-Control','no-store');
+  res.json({ok:true,local:false,
+   transactions:balances.rows.map(x=>({id:String(x.id),type:String(x.action||'balance'),amount:Number(x.change_amount)||0,balanceAfter:Number(x.balance_after)||0,note:String(x.note||''),createdAt:Number(x.created_at)||0})),
+   recharges:payments.rows.map(x=>({id:x.id,amount:Number(x.amount)||0,method:x.method,transactionRef:x.transaction_ref,status:x.status,createdAt:Number(x.created_at)||0,reviewedAt:x.reviewed_at==null?null:Number(x.reviewed_at)})),
+   work:charges.rows.map(x=>({id:x.idempotency_key,service:'Birth Certificate PDF',amount:Number(x.amount)||0,balanceAfter:Number(x.balance_after)||0,createdAt:Number(x.created_at)||0}))
+  });
+ }catch(err){console.error('[Account history] query failed:',err.message);res.status(503).json({ok:false,error:'Account history ডাটাবেস থেকে লোড করা যায়নি।'});}
+});
+
 app.get('/api/balance',requireUserAuth,(req,res)=>{const user=authStore.users.find(u=>u.id===req.auth.userId);res.json({ok:true,balance:Number(user?.balance)||0,charged:0,local:!pool});});
 // Preview is deliberately free. Keep the old endpoint as a compatibility alias.
 app.post('/api/balance/charge',requireUserAuth,(req,res)=>{

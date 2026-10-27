@@ -102,6 +102,7 @@ body:not(.login-locked) .cert-preview{background:#050b10!important;border-color:
 .side-menu-backdrop.open{display:block!important}
 /* No Image/History cards in the normal page flow. */
 @media(max-width:950px){.workspace-grid{display:block!important;grid-template-columns:1fr!important}.workspace-grid>.side-bar{position:fixed!important;display:flex!important;width:min(380px,88vw)!important;grid-template-columns:none!important}}
+.premium-dashboard{margin:0 0 22px;padding:clamp(16px,2.5vw,28px);background:#f4f8ff;border:1px solid #dbe7f5;border-radius:20px;color:#18283d;text-align:left}.dashboard-heading,.dashboard-section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.dashboard-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.6px;color:#3477d5}.dashboard-heading h2{font-size:clamp(22px,3vw,30px);margin:5px 0;color:#172d4a;text-align:left}.dashboard-heading p,.dashboard-section-head p{margin:0;color:#718096;font-size:13px}.dashboard-refresh{background:#fff;border:1px solid #d5e1ef;color:#365574;padding:9px 13px;border-radius:10px}.dashboard-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:22px 0}.summary-card{display:flex;align-items:center;gap:13px;padding:17px;background:#fff;border:1px solid #e0e9f4;border-radius:15px;box-shadow:0 4px 16px #183a5b08}.summary-icon{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:13px;background:#eaf2ff;color:#3477d5;font-size:21px;font-weight:800}.summary-card small{display:block;color:#738198;font-size:12px}.summary-card strong{display:block;margin-top:4px;font-size:20px;color:#203b5e}.dashboard-section-head{margin:23px 0 12px}.dashboard-section-head h3{margin:0 0 4px;font-size:17px;color:#233c5b}.dashboard-service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.dashboard-service-card{padding:18px;background:#fff;border:1px solid #dfe8f3;border-radius:16px;box-shadow:0 6px 18px #254b7008;display:flex;flex-direction:column;min-height:180px}.dashboard-service-icon{width:48px;height:48px;display:grid;place-items:center;background:#eaf3ff;border-radius:14px;font-size:24px}.dashboard-service-card h4{margin:14px 0 5px;font-size:15px;color:#243d5c}.dashboard-service-card p{margin:0;color:#74849a;font-size:12px}.dashboard-service-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:auto;padding-top:17px}.dashboard-rate{font-size:21px;font-weight:800;color:#176bca}.dashboard-rate small{display:block;font-size:10px;font-weight:600;color:#8290a4}.dashboard-open-service{background:#2563eb;color:white;border-radius:10px;padding:10px 12px;font-size:12px}.dashboard-history-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.dashboard-panel{min-width:0;padding:16px;background:#fff;border:1px solid #e0e8f2;border-radius:15px}.dashboard-panel h4{margin:0 0 12px;color:#2b4564}.dashboard-list{font-size:12px;color:#697c92;max-height:220px;overflow:auto}.dashboard-list p{margin:0;padding:9px 0;border-bottom:1px solid #edf1f6}.dashboard-list .dash-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #edf1f6}.dashboard-list .dash-row strong{display:block;color:#2c4563;font-size:12px}.dashboard-list .dash-row small{display:block;margin-top:3px;color:#8a98a9}.dashboard-list .dash-amount{white-space:nowrap;font-weight:800;color:#176bca}.dashboard-recharge-link{display:inline-flex;margin-top:12px;color:#176bca;text-decoration:none;font-size:12px;font-weight:800}.dashboard-notice{font-size:12px;color:#64748b;margin-top:10px}.dashboard-loading{padding:20px;background:#fff;border-radius:12px;color:#8290a4}@media(max-width:760px){.dashboard-summary,.dashboard-history-grid{grid-template-columns:1fr}.premium-dashboard{padding:15px}.summary-card{padding:13px}}
 </style>
 
 <style id="clean-modern-final-ui">
@@ -641,6 +642,13 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 <p class="sub">জন্ম নিবন্ধন নাম্বার আর জন্ম তারিখ দিয়ে Sertifiket Mak করুন</p>
 <div id="userBalanceBar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;margin:10px 0;border:1px solid #29432a;border-radius:12px;background:#07140d;color:#dcebd7"><b>💰 Balance: <span id="userBalance">৳0</span></b><a href="https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge" target="_blank" rel="noopener" style="color:#7bea5b;text-decoration:none;font-weight:700">💬 Payment Recharge</a></div>
 
+<section id="premiumDashboard" class="premium-dashboard" aria-label="User dashboard">
+<div class="dashboard-heading"><div><span class="dashboard-eyebrow">BDRIS WORKSPACE</span><h2>আপনার ড্যাশবোর্ড</h2><p>সার্ভিস, বর্তমান রেট এবং অ্যাকাউন্ট হিস্টোরি</p></div><button type="button" class="dashboard-refresh" onclick="loadPremiumDashboard()">↻ Refresh</button></div>
+<div class="dashboard-summary"><article class="summary-card"><span class="summary-icon">৳</span><div><small>বর্তমান ব্যালেন্স</small><strong id="dashBalance">৳0.00</strong></div></article><article class="summary-card"><span class="summary-icon">↗</span><div><small>সার্ভিস</small><strong id="dashServiceCount">—</strong></div></article><article class="summary-card"><span class="summary-icon">▤</span><div><small>সাম্প্রতিক কাজ</small><strong id="dashWorkCount">—</strong></div></article></div>
+<div class="dashboard-section-head"><div><h3>সার্ভিসসমূহ</h3><p>রেট ডাটাবেসে থাকা বর্তমান user rate-এর সঙ্গে মিলবে</p></div></div><div id="dashboardServices" class="dashboard-service-grid"><div class="dashboard-loading">সার্ভিস লোড হচ্ছে…</div></div>
+<div class="dashboard-section-head"><div><h3>অ্যাকাউন্ট হিস্টোরি</h3><p>Transaction, Recharge ও সফল Download</p></div></div>
+<div class="dashboard-history-grid"><article class="dashboard-panel"><h4>ট্রানজ্যাকশন</h4><div id="dashTransactions" class="dashboard-list"><p>লোড হচ্ছে…</p></div></article><article class="dashboard-panel"><h4>রিচার্জ</h4><div id="dashRecharges" class="dashboard-list"><p>লোড হচ্ছে…</p></div><a class="dashboard-recharge-link" href="https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge" target="_blank" rel="noopener">＋ ব্যালেন্স রিচার্জ</a></article><article class="dashboard-panel"><h4>কাজের হিস্টোরি</h4><div id="dashWork" class="dashboard-list"><p>লোড হচ্ছে…</p></div></article></div><div class="dashboard-notice" id="dashboardNotice" role="status"></div></section>
+
 <!-- ইনপুট সেকশন -->
 <div class="search-fields-stack" style="margin-bottom:15px; background:#f4f6f8; padding:15px; border-radius:8px;">
   <label>জন্ম নিবন্ধন নম্বর (BRN)<input id="search_brn" placeholder="১৭ ডিজিট নম্বর"></label>
@@ -799,7 +807,28 @@ bootAuth();
 
 let currentSessionId = null;
 let userAppInitialized = false;
-function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=true;renderPDFHistory();loadPDFImageLibrary();refreshUserBalance();setInterval(loadPDFImageLibrary,15000)}
+function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=true;renderPDFHistory();loadPDFImageLibrary();refreshUserBalance();loadPremiumDashboard();setInterval(loadPDFImageLibrary,15000)}
+
+async function loadPremiumDashboard(){
+ const notice=document.getElementById('dashboardNotice');
+ const fmt=n=>'৳'+(Number(n)||0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const list=(items,kind)=>{if(!items?.length)return '<p>এখনো কোনো রেকর্ড নেই।</p>';return items.slice(0,8).map(x=>{const label=kind==='recharge'?(x.method||'Recharge'):(kind==='work'?(x.service||'Birth Certificate PDF'):(x.note||x.type||'Balance transaction'));const date=x.createdAt?new Date(Number(x.createdAt)).toLocaleString('bn-BD'):'সময় নেই';return '<div class="dash-row"><span><strong>'+safe(label)+'</strong><small>'+safe(date)+(kind==='recharge'?' · '+safe(x.status||'pending'):'')+'</small></span><span class="dash-amount">'+fmt(x.amount)+'</span></div>'}).join('')};
+ try{
+  const [sr,hr,br]=await Promise.all([fetch('/api/services'),fetch('/api/account/history'),fetch('/api/balance')]);
+  const services=await sr.json(),history=await hr.json(),balance=await br.json();
+  if(!sr.ok||!services.ok)throw Error(services.error||'সার্ভিস লোড হয়নি');
+  document.getElementById('dashBalance').textContent=fmt(balance.balance??services.balance);
+  document.getElementById('dashServiceCount').textContent=String(services.services.length);
+  document.getElementById('dashWorkCount').textContent=String(history.work?.length||0);
+  document.getElementById('dashboardServices').innerHTML=services.services.map(s=>'<article class="dashboard-service-card"><span class="dashboard-service-icon">'+safe(s.icon||'▣')+'</span><h4>'+safe(s.name)+'</h4><p>Preview বিনামূল্যে · সফল Download-এ চার্জ</p><div class="dashboard-service-footer"><span class="dashboard-rate">'+fmt(s.rate)+'<small>প্রতি সফল Download</small></span><button class="dashboard-open-service" type="button" onclick="document.getElementById(\'in_brn\')?.scrollIntoView({behavior:\'smooth\',block:\'center\'})">সার্ভিস খুলুন →</button></div></article>').join('');
+  document.getElementById('dashTransactions').innerHTML=list(history.transactions,'transaction');
+  document.getElementById('dashRecharges').innerHTML=list(history.recharges,'recharge');
+  document.getElementById('dashWork').innerHTML=list(history.work,'work');
+  if(notice)notice.textContent=history.local?'লোকাল মোড: অ্যাকাউন্ট হিস্টোরি দেখাতে DATABASE_URL সংযোগ প্রয়োজন।':'রেট ও হিস্টোরি ডাটাবেস থেকে লোড হয়েছে।';
+ }catch(e){if(notice)notice.textContent='ড্যাশবোর্ড লোড হয়নি: '+(e.message||'API error');}
+}
+
 let mathCaptchaA = 0, mathCaptchaB = 0, mathCaptchaOp = '+';
 let mathCaptchaSolved = false;
 let currentData = null;
