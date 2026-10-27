@@ -30,9 +30,33 @@ const { Pool } = require('pg');
 const { resolvePdfImageStorage } = require('./pdf-image-storage');
 const app = express();
 
-// Restrict cross-origin browser access. Data Stor mutations also validate same origin.
-const allowedOrigins = new Set(String(process.env.ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean));
-app.use(cors({ origin(origin, callback) { if (!origin) return callback(null, false); if (allowedOrigins.has(origin)) return callback(null, origin); return callback(new Error('Origin not allowed')); }, credentials: true }));
+// Restrict cross-origin browser access. Allow this deployed app's own origin,
+// plus explicitly configured front-end origins. Never use wildcard CORS with credentials.
+const allowedOrigins = new Set(
+  [
+    ...String(process.env.ALLOWED_ORIGINS || '').split(','),
+    process.env.RENDER_EXTERNAL_URL || '',
+    process.env.APP_URL || '',
+    process.env.FRONTEND_URL || ''
+  ]
+    .map(v => String(v).trim())
+    .filter(Boolean)
+    .map(v => { try { return new URL(/^https?:\/\//i.test(v) ? v : 'https://' + v).origin; } catch (_) { return ''; } })
+    .filter(Boolean)
+);
+app.use(cors({
+  origin(origin, callback) {
+    // Requests without Origin (health checks, CLI, same-process tools) do not
+    // need CORS headers. Reject unknown browser origins without throwing noisy
+    // middleware errors into Render logs.
+    if (!origin) return callback(null, false);
+    let normalized = '';
+    try { normalized = new URL(origin).origin; } catch (_) {}
+    if (normalized && allowedOrigins.has(normalized)) return callback(null, normalized);
+    return callback(null, false);
+  },
+  credentials: true
+}));
 app.use((req,res,next)=>{
   if(req.path==='/' || req.path.endsWith('.html') || req.path.startsWith('/api/')){
     res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
