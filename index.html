@@ -769,7 +769,7 @@ body.service-transactions #premiumDashboard .dashboard-history-grid{grid-templat
     <button type="button" onclick="openServiceWindow('birth')"><span class="nav-emoji">👶</span> জন্ম নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('pdf-image')"><span class="nav-emoji">🖼</span> PDF Image <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('pdf-history')"><span class="nav-emoji">📚</span> PDF History <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="closeSideMenu();window.open('https://data-stor.vercel.app/search','_blank','noopener,noreferrer')"><span class="nav-emoji">🗂️</span> নিবন্ধন ডাটা <span class="nav-arrow">↗</span></button>
+    <button type="button" onclick="openServiceWindow('records')"><span class="nav-emoji">🗂️</span> নিবন্ধন ডাটা <span class="nav-arrow">↗</span></button>
     <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('My Profile')"><span class="nav-emoji">👤</span> My Profile <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openPaymentRecharge()"><span class="nav-emoji">💳</span> Add Balance <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('transactions')"><span class="nav-emoji">📄</span> Transaction History <span class="nav-arrow">›</span></button>
@@ -835,6 +835,10 @@ function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=tru
 
 
 function openServiceWindow(service){
+  if(service === 'records'){
+    window.open(new URL('/data-stor.html', location.origin).toString(), '_blank', 'noopener,noreferrer');
+    return;
+  }
   const allowed = new Set(['birth','death','pdf-image','pdf-history','transactions']);
   if(service === 'balance'){ openPaymentRecharge(); return; }
   if(!allowed.has(service)){ status('এই সার্ভিসটি এখনো এই অ্যাপে যুক্ত হয়নি।','err'); return; }
@@ -847,6 +851,7 @@ function renderDashboardServiceCards(rate){
   const items = [
     {id:'birth',icon:'👶',name:'জন্ম নিবন্ধন মেইক',desc:'জন্ম নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#08a875',tint:'#d9f8ed',fast:true,meta:'সফল PDF Download',value:price},
     {id:'death',icon:'⚰️',name:'মৃত্যু নিবন্ধন মেইক',desc:'মৃত্যু নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#ef3158',tint:'#ffe4ea',fast:true,meta:'সফল PDF Download',value:price},
+    {id:'records',icon:'🗂️',name:'নিবন্ধন ডাটা',desc:'নাম ও জন্মতারিখ দিয়ে রেকর্ড খুঁজুন',accent:'#3b5ee7',tint:'#e4eaff',meta:'প্রতি নতুন unlock',value:'৳৩০'},
     {id:'pdf-image',icon:'🖼️',name:'PDF Image',desc:'সিল, স্বাক্ষর ও অফিসের Image নির্বাচন করুন',accent:'#5b42e8',tint:'#ece7ff',meta:'Image Library',value:'খুলুন'},
     {id:'pdf-history',icon:'📚',name:'PDF History',desc:'আগে তৈরি করা PDF দেখুন ও ডাউনলোড করুন',accent:'#1386da',tint:'#e0f2ff',meta:'Saved PDFs',value:'দেখুন'},
     {id:'transactions',icon:'📄',name:'Transaction History',desc:'ব্যালেন্স পরিবর্তন ও ব্যবহারের হিস্টোরি দেখুন',accent:'#1479c9',tint:'#e5f3ff',meta:'Account History',value:'দেখুন'},
