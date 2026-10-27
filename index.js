@@ -853,6 +853,11 @@ app.post('/api/data-stor/records/:id/unlock',requireUserAuth,async(req,res)=>{
  res.set('Cache-Control','no-store');res.json({ok:true,alreadyUnlocked:false,charged:30,balance:next,record:rec.rows[0]});}
  catch(e){await client.query('ROLLBACK').catch(()=>{});console.error('[Data Stor] unlock transaction failed:',e.message);res.status(503).json({ok:false,error:'Unlock ব্যর্থ হয়েছে; ব্যালেন্স ও রেকর্ড যাচাই করে আবার চেষ্টা করুন।'});}finally{client.release();}
 });
+app.get('/api/data-stor/admin/stats',requireAdmin,async(req,res)=>{
+ if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
+ try{const q=await pool.query('SELECT count(*)::int total FROM birth_records');res.set('Cache-Control','no-store');res.json({ok:true,total:Number(q.rows[0]?.total)||0});}
+ catch(e){console.error('[Data Stor] admin stats failed:',e.message);res.status(503).json({ok:false,error:'Data Stor record count লোড করা যায়নি।'});}
+});
 app.post('/api/data-stor/admin/import',requireAdmin,async(req,res)=>{
  if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});const csv=String(req.body?.csv||'');if(!csv.trim())return res.status(400).json({ok:false,error:'CSV content প্রয়োজন।'});
  let parsed;try{parsed=parseDataStorCsv(csv);}catch(e){return res.status(400).json({ok:false,error:e.message});}if(!parsed.rows.length)return res.status(400).json({ok:false,error:'Valid CSV row পাওয়া যায়নি।',summary:parsed.summary});
