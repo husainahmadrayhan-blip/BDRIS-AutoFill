@@ -29,6 +29,10 @@ Supported dates are `YYYY-MM-DD`, `DD/MM/YYYY`, and `DD-MM-YYYY`. The importer v
 
 The database schema additions are non-destructive (`CREATE TABLE/INDEX IF NOT EXISTS`). Search and unlock require a working `DATABASE_URL` and a database containing imported rows. A CSV import should be tested first against a staging Neon database, not production-only data.
 
+## Account service windows
+
+The dashboard includes separate views for My Profile, Change Password, How to Use, Contact Support, and confirmed Logout. The change-password API requires the authenticated AutoFill user session plus the current password, limits repeated attempts, updates only that user's password hash in PostgreSQL, and invalidates other sessions for that user. Certificate Preview continues to expose both Print and Download.
+
 ## Checks
 
 With Node.js 22 and dependencies installed, run:
