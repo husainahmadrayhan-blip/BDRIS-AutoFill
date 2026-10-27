@@ -770,7 +770,7 @@ app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
  const q=await pool.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records'+clause+' ORDER BY id LIMIT $'+(vals.length+1)+' OFFSET $'+(vals.length+2),[...vals,limit,(page-1)*limit]);
  const ids=q.rows.map(r=>String(r.id)),unlocked=ids.length?await pool.query('SELECT record_id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=ANY($2::bigint[])',[String(user.id),ids]):{rows:[]},set=new Set(unlocked.rows.map(r=>String(r.record_id)));
  const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1',[String(user.id)]);
- res.set('Cache-Control','no-store');res.json({ok:true,total:Number(count.rows[0]?.total)||0,page,limit,pages:Math.ceil((Number(count.rows[0]?.total)||0)/limit),balance:Number(b.rows[0]?.balance??user.balance)||0,results:q.rows.map(r=>({id:Number(r.id),maskedBrn:dataStorMask(r.brn),unlocked:set.has(String(r.id)),price:DATA_STOR_UNLOCK_PRICE,dob:r.dob,bn:r.bn,en:r.en,gender:r.gender}))});}
+ res.set('Cache-Control','no-store');res.json({ok:true,total:Number(count.rows[0]?.total)||0,page,limit,pages:Math.ceil((Number(count.rows[0]?.total)||0)/limit),balance:Number(b.rows[0]?.balance??user.balance)||0,results:q.rows.map(r=>{const isUnlocked=set.has(String(r.id));const item={id:Number(r.id),maskedBrn:dataStorMask(r.brn),unlocked:isUnlocked,price:DATA_STOR_UNLOCK_PRICE,dob:r.dob,bn:r.bn,en:r.en,gender:r.gender};if(isUnlocked)item.brn=r.brn;return item;})});}
  catch(e){console.error('[Data Stor] search failed:',e.message);res.status(503).json({ok:false,error:'Search ব্যর্থ হয়েছে।'});}
 });
 app.get('/api/data-stor/records/:id',requireUserAuth,async(req,res)=>{
