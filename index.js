@@ -215,7 +215,7 @@ async function initializeDatabase(){
       kind text NOT NULL, note text NOT NULL DEFAULT '', created_at bigint NOT NULL)`);
     await client.query(`CREATE TABLE IF NOT EXISTS fil_images (
       id text PRIMARY KEY, name text NOT NULL, file_name text NOT NULL DEFAULT '',
-      mime_type text NOT NULL DEFAULT '', image_data bytea, position jsonb NOT NULL DEFAULT '{}'::jsonb,
+      mime_type text NOT NULL DEFAULT '', file_size bigint NOT NULL DEFAULT 0, image_data bytea, position jsonb NOT NULL DEFAULT '{}'::jsonb
       permanent boolean NOT NULL DEFAULT false, created_at bigint NOT NULL DEFAULT 0,
       updated_at bigint NOT NULL DEFAULT 0, metadata jsonb NOT NULL DEFAULT '{}'::jsonb)`);
     // Safe, additive upgrades for databases where an earlier partial version
@@ -223,6 +223,7 @@ async function initializeDatabase(){
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS file_name text NOT NULL DEFAULT \'\'');
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS mime_type text NOT NULL DEFAULT \'\'');
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS image_data bytea');
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS file_size bigint NOT NULL DEFAULT 0');
     await client.query("ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS position jsonb NOT NULL DEFAULT '{}'::jsonb");
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS permanent boolean NOT NULL DEFAULT false');
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS created_at bigint NOT NULL DEFAULT 0');
@@ -519,18 +520,18 @@ function savePDFImageLibrary(store){
         catch (error) { console.warn('[Neon PDF Images] Binary mirror skipped:', image.id, error.message); }
       }
       await pool.query(`INSERT INTO fil_images
-        (id,name,file_name,mime_type,image_data,position,permanent,created_at,updated_at,metadata)
-        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb)
+        (id,name,file_name,mime_type,file_size,image_data,position,permanent,created_at,updated_at,metadata)
+        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb)
         ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,file_name=EXCLUDED.file_name,
-        mime_type=EXCLUDED.mime_type,
+        mime_type=EXCLUDED.mime_type,file_size=EXCLUDED.file_size,
         image_data=CASE WHEN EXCLUDED.image_data IS NULL AND EXCLUDED.file_name<>''
           THEN fil_images.image_data ELSE EXCLUDED.image_data END,
         position=EXCLUDED.position,permanent=EXCLUDED.permanent,
         updated_at=EXCLUDED.updated_at,metadata=EXCLUDED.metadata`,
         [String(image.id),String(image.name||''),fileName,String(image.mimeType||''),
-         imageData,JSON.stringify(image.position||{}),!!image.permanent,
+         imageData ? imageData.length : Number(image.fileSize)||0,imageData,JSON.stringify(image.position||{}),!!image.permanent,
          Number(image.createdAt)||0,Number(image.updatedAt)||Date.now(),
-         JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','position','permanent','createdAt','updatedAt'].includes(k))))]);
+         JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','fileSize','position','permanent','createdAt','updatedAt'].includes(k))))]);
     }
     const ids = snapshot.map(image => String(image.id));
     if (ids.length) await pool.query('DELETE FROM fil_images WHERE NOT (id = ANY($1::text[]))', [ids]);
@@ -545,7 +546,7 @@ async function initializePdfImageDatabase(client) {
     const images = [];
     for (const row of result.rows) {
       const image = {id:row.id,name:row.name,fileName:row.file_name||'',mimeType:row.mime_type||'',
-        position:row.position||{},permanent:!!row.permanent,createdAt:Number(row.created_at)||Date.now(),
+        position:row.position||{},fileSize:Number(row.file_size)||0,permanent:!!row.permanent,createdAt:Number(row.created_at)||Date.now(),
         updatedAt:Number(row.updated_at)||Date.now(),...(row.metadata||{})};
       if (row.image_data && image.fileName) {
         const safeName = path.basename(image.fileName);
@@ -573,13 +574,13 @@ async function initializePdfImageDatabase(client) {
       try { imageData = fs.readFileSync(path.join(PDF_IMAGE_DIR,fileName)); } catch (_) {}
     }
     await client.query(`INSERT INTO fil_images
-      (id,name,file_name,mime_type,image_data,position,permanent,created_at,updated_at,metadata)
-      VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb)
+      (id,name,file_name,mime_type,file_size,image_data,position,permanent,created_at,updated_at,metadata)
+      VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb)
       ON CONFLICT(id) DO NOTHING`,
       [String(image.id||crypto.randomBytes(12).toString('hex')),String(image.name||''),
-       fileName,String(image.mimeType||''),imageData,JSON.stringify(image.position||{}),!!image.permanent,
+       fileName,String(image.mimeType||''),imageData ? imageData.length : Number(image.fileSize)||0,imageData,JSON.stringify(image.position||{}),!!image.permanent,
        Number(image.createdAt)||Date.now(),Number(image.updatedAt)||Date.now(),
-       JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','position','permanent','createdAt','updatedAt'].includes(k))))]);
+       JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','fileSize','position','permanent','createdAt','updatedAt'].includes(k))))]);
   }
   console.log(`[Neon PDF Images] Initial migration checked ${(local.images||[]).length} local record(s); local files were preserved.`);
 }
@@ -635,7 +636,7 @@ for(const name of DEFAULT_PDF_IMAGE_NAMES){
   }
 }
 if(changedDefaultImages) savePDFImageLibrary(pdfImageStore);
-function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,position:x.position||{x:105,y:247,z:100,w:24,h:10},permanent:!!x.permanent,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
+function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',fileSize:Number(x.fileSize)||0,hasImage:!!x.fileName,position:x.position||{x:105,y:247,z:100,w:24,h:10},permanent:!!x.permanent,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
 app.post('/api/auth/login',(req,res)=>{
@@ -851,7 +852,7 @@ app.post('/api/pdf-images', (req,res)=>{
   const fileName=image.id+'.'+ext;
   for(const ext2 of ['png','jpg','webp']){ const old=path.join(PDF_IMAGE_DIR,image.id+'.'+ext2); if(old!==path.join(PDF_IMAGE_DIR,fileName)) try{fs.unlinkSync(old)}catch(_){} }
   fs.writeFileSync(path.join(PDF_IMAGE_DIR,fileName),buffer);
-  image.fileName=fileName; image.mimeType=mime; image.updatedAt=Date.now();
+  image.fileName=fileName; image.mimeType=mime; image.fileSize=buffer.length; image.updatedAt=Date.now();
   savePDFImageLibrary(store);
   res.json({ok:true,image:pdfImageMeta(image)});
 });
