@@ -753,7 +753,7 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 </aside></div>
 
 <!-- Certificate Preview action stays at the very bottom of the form -->
-<div class="bottom-preview-action"><button class="pdf" onclick="previewPDF()">📄 Certificate Preview <small style="display:block;font-size:9px;opacity:.8">ফ্রি Preview</small></button></div>
+<div class="bottom-preview-action" style="display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap"><label style="display:flex;gap:8px;align-items:center;font-size:13px;font-weight:600"><input id="autoSelectOfficeImage" type="checkbox" onchange="autoSelectRegistrarOfficeImage()"> Registrar Office অনুযায়ী Image Auto Select</label><button class="pdf" onclick="previewPDF()">📄 Certificate Preview <small style="display:block;font-size:9px;opacity:.8">ফ্রি Preview</small></button></div>
 
 <!-- Certificate Preview -->
 <div id="certPreview" class="cert-preview" style="display:none">
@@ -989,6 +989,29 @@ async function preparePDFImagesForGitHub(){
   }catch(e){status('GitHub bundle তৈরি হয়নি: '+e.message,'err');}
 }
 
+function normalizeOfficeImageKey(value){
+  return String(value||'').normalize('NFKC')
+    .replace(/^\s*(?:registered\s+office|registration\s+office|office\s+name|নিবন্ধন\s*অফিস|নিবন্ধিত\s*অফিস)\s*[:ঃ：-]\s*/i,'')
+    .replace(/[০-৯]/g,d=>String('০১২৩৪৫৬৭৮৯'.indexOf(d)))
+    .toLocaleLowerCase()
+    .replace(/[‐‑‒–—_]/g,'-')
+    .replace(/\s+/g,'')
+    .replace(/[^a-z0-9\u0980-\u09ff-]/g,'');
+}
+async function autoSelectRegistrarOfficeImage(){
+  const toggle=$('autoSelectOfficeImage');
+  if(!toggle?.checked)return;
+  const office=String($('in_registrationOffice')?.value||currentData?.registrationOffice||currentData?.registrationOfficeName||'').trim();
+  if(!office){status('Registrar Office পাওয়া যায়নি। Image Library থেকে manually select করুন।','err');return;}
+  const key=normalizeOfficeImageKey(office);
+  const matches=pdfImageLibrary.filter(x=>x?.hasImage&&normalizeOfficeImageKey(x.name)===key);
+  if(matches.length!==1){
+    status(matches.length>1?'একাধিক office image match হয়েছে। ভুল image এড়াতে manually select করুন।':'এই Registrar Office-এর exact Image match পাওয়া যায়নি। Manually select করুন।','err');
+    return;
+  }
+  await selectPDFImage(matches[0]);
+  status('Registrar Office অনুযায়ী Image select হয়েছে: '+matches[0].name,'ok');
+}
 async function loadPDFImageLibrary(){
   try{
     const r=await fetch('/api/pdf-images');
@@ -996,6 +1019,7 @@ async function loadPDFImageLibrary(){
     if(!r.ok||!d.ok) throw new Error(d.error||'Image Library load failed');
     pdfImageLibrary=d.images||[];
     renderPDFImageLibrary();
+    if($('autoSelectOfficeImage')?.checked) await autoSelectRegistrarOfficeImage();
   }catch(e){
     const box=$('pdfImageList');
     if(box) box.innerHTML='<div class="history-empty">Image Library load করা যায়নি: '+escHtml(e.message)+'</div>';
@@ -2682,6 +2706,8 @@ window.addEventListener('message',e=>{
 });
 updatePDFImageAdjustUI();
 updatePDFImageAdjustUI();
+const registrarOfficeInput=$('in_registrationOffice');
+if(registrarOfficeInput) registrarOfficeInput.addEventListener('change',()=>{if($('autoSelectOfficeImage')?.checked)autoSelectRegistrarOfficeImage();});
 const deathDateInput=$('in_dob');
 if(deathDateInput){ deathDateInput.addEventListener('input',()=>{ if(registrationMode==='death'){ const v=deathDateInput.value.trim(); $('in_inWord').value=v?dateToInWord(v):''; pdfPreviewNeedsHistorySave=true; } }); }
 renderPDFHistory();
