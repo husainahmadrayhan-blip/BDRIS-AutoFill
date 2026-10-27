@@ -37,7 +37,7 @@ function argValue(name) {
 }
 const file = argValue('--file');
 const dryRun = args.includes('--dry-run');
-const batchSize = Math.max(50, Math.min(2000, Number(argValue('--batch-size') || 500)));
+const batchSize = Math.max(100, Math.min(5000, Number(argValue('--batch-size') || 2000)));
 const databaseUrl = String(process.env.DATABASE_URL || '').trim();
 
 if (!file) {
@@ -118,32 +118,47 @@ async function main() {
     let batch = [];
     const flush = async () => {
       if (!batch.length) return;
+      const rows = batch;
+      batch = [];
+      const brns = rows.map(row => row.brn);
       if (dryRun) {
-        for (const row of batch) {
-          if (row.wasExisting) counters.updated++; else counters.inserted++;
+        const existing = await client.query(
+          'SELECT brn FROM public.birth_records WHERE brn = ANY($1::text[])',
+          [brns]
+        );
+        const existingSet = new Set(existing.rows.map(row => String(row.brn)));
+        for (const row of rows) {
+          if (existingSet.has(row.brn)) counters.updated++; else counters.inserted++;
         }
-        batch = [];
         return;
+      }
+
+      const values = [];
+      const params = [];
+      for (const row of rows) {
+        const offset = params.length;
+        params.push(row.brn, row.dob, row.name_bn, row.name_en, row.gender);
+        values.push(`($${offset + 1}, $${offset + 2}::date, $${offset + 3}, $${offset + 4}, $${offset + 5})`);
       }
       await client.query('BEGIN');
       try {
-        for (const row of batch) {
-          const result = await client.query(
-            'INSERT INTO public.birth_records (brn, dob, name_bn, name_en, gender) VALUES ($1, $2::date, $3, $4, $5) ON CONFLICT (brn) DO UPDATE SET dob = EXCLUDED.dob, name_bn = EXCLUDED.name_bn, name_en = EXCLUDED.name_en, gender = EXCLUDED.gender',
-            [row.brn, row.dob, row.name_bn, row.name_en, row.gender]
-          );
-          if (result.rowCount) {
-            // PostgreSQL reports one affected row for both insert and update.
-            // Determine prior existence before upsert for accurate counts.
-            if (row.wasExisting) counters.updated++; else counters.inserted++;
-          }
+        const result = await client.query(
+          `INSERT INTO public.birth_records (brn, dob, name_bn, name_en, gender)
+           VALUES ${values.join(',')}
+           ON CONFLICT (brn) DO UPDATE SET
+             dob = EXCLUDED.dob, name_bn = EXCLUDED.name_bn,
+             name_en = EXCLUDED.name_en, gender = EXCLUDED.gender
+           RETURNING (xmax = 0) AS was_inserted`,
+          params
+        );
+        for (const row of result.rows) {
+          if (row.was_inserted) counters.inserted++; else counters.updated++;
         }
         await client.query('COMMIT');
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
         throw e;
       }
-      batch = [];
     };
 
     for await (const line of rl) {
@@ -177,9 +192,7 @@ async function main() {
         name_en: String(fields[headerMap.name_en] || '').trim(),
         gender: String(fields[headerMap.gender] || '').trim()
       };
-      const existing = await client.query('SELECT 1 FROM public.birth_records WHERE brn = $1 LIMIT 1', [brn]);
-      row.wasExisting = existing.rowCount > 0;
-      batch.push(row);
+            batch.push(row);
       if (batch.length >= batchSize) {
         await flush();
         console.log('Processed CSV rows:', counters.rows.toLocaleString('en-US'));
