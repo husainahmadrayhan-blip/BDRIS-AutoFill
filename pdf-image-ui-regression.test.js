@@ -8,6 +8,14 @@ const test = require('node:test');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 
+test('certificate preview does not invoke billing', () => {
+  const start = html.indexOf('async function previewPDF(options={})');
+  const end = html.indexOf('async function printCertificate()', start);
+  assert.ok(start >= 0 && end > start, 'preview handler should exist');
+  const previewHandler = html.slice(start, end);
+  assert.doesNotMatch(previewHandler, /chargeForPreview|\/api\/balance\/charge/);
+});
+
 test('PDF image library has search and no fixed ten-image UI cap', () => {
   assert.match(html, /id="pdfImageSearch"/);
   assert.match(html, /visibleImages=pdfImageLibrary\.filter/);
