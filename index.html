@@ -1042,7 +1042,7 @@ function renderPDFImageLibrary(){
     const item=document.createElement('div'); item.className='pdf-image-item'+(img.id===selectedPDFImageId?' selected':'');
     item.title=img.hasImage?'Click করে Image select করুন':'Click করে Image upload করুন';
     const visual=document.createElement(img.hasImage?'img':'div');
-    if(img.hasImage){visual.className='pdf-image-thumb';visual.alt=img.name;visual.src='/api/pdf-images/'+encodeURIComponent(img.id)+'?raw=1&v='+encodeURIComponent(img.updatedAt||Date.now());visual.onerror=()=>{visual.replaceWith(Object.assign(document.createElement('div'),{className:'pdf-image-icon',textContent:'🖼️'}));};}
+    if(img.hasImage){visual.className='pdf-image-thumb';visual.alt=img.name;visual.loading='lazy';visual.decoding='async';visual.src='/api/pdf-images/'+encodeURIComponent(img.id)+'?raw=1&v='+encodeURIComponent(img.updatedAt||Date.now());visual.onerror=()=>{visual.replaceWith(Object.assign(document.createElement('div'),{className:'pdf-image-icon',textContent:'🖼️'}));};}
     else {visual.className='pdf-image-icon';visual.textContent='🖼️';}
     const text=document.createElement('div'); text.className='pdf-image-name'; text.textContent=img.name;
     const state=document.createElement('span'); state.className='pdf-image-state'; state.textContent=img.hasImage?(img.id===selectedPDFImageId?'✓ PDF-তে নির্বাচিত':'PDF-তে বসাতে ক্লিক করুন'):'Click করে Image upload করুন'; text.appendChild(state);
