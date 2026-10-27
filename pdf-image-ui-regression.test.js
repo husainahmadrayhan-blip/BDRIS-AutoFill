@@ -76,3 +76,8 @@ test('image uploads validate actual PNG, JPEG, and WEBP file signatures', () => 
   assert.match(server, /buffer\.toString\('ascii',0,4\)==='RIFF' && buffer\.toString\('ascii',8,12\)==='WEBP'/);
   assert.match(server, /Image file-এর content ও MIME type মিলছে না/);
 });
+
+test('position save treats zero coordinates as valid saved values', () => {
+  const helpers = server.match(/const n=\(key,def\)=>\{const supplied=req\.body\?\.\[key\];if\(supplied!==undefined&&supplied!==null&&supplied!==''\)\{const v=Number\(supplied\);if\(Number\.isFinite\(v\)\)return v;\}const saved=Number\(old\[key\]\);return Number\.isFinite\(saved\)\?saved:def;\};/g) || [];
+  assert.equal(helpers.length, 2, 'both position endpoints should preserve zero values');
+});
