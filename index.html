@@ -728,7 +728,7 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 </aside></div>
 
 <!-- Certificate Preview action stays at the very bottom of the form -->
-<div class="bottom-preview-action"><button class="pdf" onclick="previewPDF()">📄 Certificate Preview <small style="display:block;font-size:9px;opacity:.8">৳4 কাটবে</small></button></div>
+<div class="bottom-preview-action"><button class="pdf" onclick="previewPDF()">📄 Certificate Preview <small style="display:block;font-size:9px;opacity:.8">বিনামূল্যে Preview</small></button></div>
 
 <!-- Certificate Preview -->
 <div id="certPreview" class="cert-preview" style="display:none">
@@ -2610,9 +2610,8 @@ function togglePrintSeal(enabled){
 }
 
 async function previewPDF(options={}){
-  if(!options.skipCharge){
-    try{ await chargeForPreview(); }catch(e){ status(e.message,'err'); await refreshUserBalance(); return; }
-  }
+  // Preview is free by policy. Billing is intentionally not invoked here.
+  // Keep skipCharge accepted for existing callers so old interactions remain compatible.
   const previewPromise = generatePDF({saveHistory:false,showPreviewEarly:true});
   setTimeout(()=>$('certPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),40);
   await previewPromise;
