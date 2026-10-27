@@ -568,9 +568,13 @@ function savePDFImageLibrary(store){
   return pdfImagePersistQueue;
 }
 async function savePDFImageLibraryForResponse(store,res){
-  try { await savePDFImageLibrary(store); return true; }
-  catch (_) {
-    if (!res.headersSent) res.status(503).json({ok:false,error:'Neon Image Library save failed. Local cache updated; check DATABASE_URL/Neon connection and retry.'});
+  try {
+    if (!pool || !dbReady) throw new Error('Neon database is not ready');
+    const saved = await savePDFImageLibrary(store);
+    if (saved !== true) throw new Error('Image Library was not persisted to Neon');
+    return true;
+  } catch (_) {
+    if (!res.headersSent) res.status(503).json({ok:false,error:'Neon Image Library save failed. The change was not confirmed in Neon; check DATABASE_URL/Neon connection and retry.'});
     return false;
   }
 }
