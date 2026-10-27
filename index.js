@@ -226,6 +226,14 @@ async function initializeDatabase(){
       updated_at bigint NOT NULL
     )`);
     await client.query('CREATE INDEX IF NOT EXISTS idx_fil_pdf_images_name ON fil_pdf_images (lower(name))');
+    await client.query(`CREATE TABLE IF NOT EXISTS fil_usage_charges (
+      user_id text NOT NULL,
+      idempotency_key text NOT NULL,
+      amount numeric(14,2) NOT NULL,
+      balance_after numeric(14,2) NOT NULL,
+      created_at bigint NOT NULL,
+      PRIMARY KEY(user_id,idempotency_key)
+    )`);
     const dbUsers = await client.query('SELECT * FROM fil_users ORDER BY created_at');
     if (!dbUsers.rowCount && (authStore.users||[]).length) {
       // One-time migration of existing local users to Neon on first setup.
@@ -688,11 +696,54 @@ app.post('/api/automation/jobs',requireUserAuth,(req,res)=>forwardAutomationRequ
 app.get('/api/automation/jobs/:id',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'GET',`/api/jobs/${encodeURIComponent(req.params.id)}`));
 app.post('/api/automation/jobs/:id/cancel',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'POST',`/api/jobs/${encodeURIComponent(req.params.id)}/cancel`,{}));
 app.get('/api/balance',requireUserAuth,(req,res)=>{const user=authStore.users.find(u=>u.id===req.auth.userId);res.json({ok:true,balance:Number(user?.balance)||0,charged:0,local:!pool});});
-app.post('/api/balance/charge',requireUserAuth,async(req,res)=>{
-  const user=authStore.users.find(u=>u.id===req.auth.userId); if(!user)return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
-  const amount=Math.max(0,Number(user.previewRate??4)); if((Number(user.balance)||0)<amount)return res.status(402).json({ok:false,error:'Balance পর্যাপ্ত নয়।',balance:Number(user.balance)||0,required:amount});
-  user.balance=Math.round(((Number(user.balance)||0)-amount)*100)/100; saveAuthStore(authStore); await recordBalanceChange(user,-amount,'usage_charge','Preview/operation charge');
-  res.json({ok:true,balance:user.balance,charged:amount,local:!pool});
+// Preview is deliberately free. Keep the old endpoint as a compatibility alias.
+app.post('/api/balance/charge',requireUserAuth,(req,res)=>{
+  const user=authStore.users.find(u=>u.id===req.auth.userId);
+  if(!user)return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
+  return res.json({ok:true,balance:Number(user.balance)||0,charged:0,local:!pool,operation:'preview'});
+});
+// Charge only after a valid PDF has been generated, and make each request idempotent.
+const localUsageCharges = new Map();
+app.post('/api/balance/charge-download',requireUserAuth,async(req,res)=>{
+  const user=authStore.users.find(u=>u.id===req.auth.userId);
+  if(!user)return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
+  const key=String(req.get('Idempotency-Key')||'').trim();
+  if(!key || key.length>160)return res.status(400).json({ok:false,error:'Download reference missing or invalid.'});
+  const amount=Math.max(0,Math.round(Number(user.previewRate??4)*100)/100);
+  if(pool && dbReady){
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const prior=await client.query('SELECT amount,balance_after FROM fil_usage_charges WHERE user_id=$1 AND idempotency_key=$2',[String(user.id),key]);
+      if(prior.rowCount){
+        await client.query('COMMIT');
+        user.balance=Number(prior.rows[0].balance_after)||0;
+        return res.json({ok:true,balance:user.balance,charged:0,alreadyCharged:true,local:false});
+      }
+      const locked=await client.query('SELECT balance FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);
+      const current=locked.rowCount?Number(locked.rows[0].balance)||0:Number(user.balance)||0;
+      if(current<amount){await client.query('ROLLBACK');return res.status(402).json({ok:false,error:'Balance পর্যাপ্ত নয়।',balance:current,required:amount});}
+      const next=Math.round((current-amount)*100)/100;
+      if(locked.rowCount) await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
+      await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),key,amount,next,Date.now()]);
+      await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),user.username,'download_charge',-amount,next,'Certificate download',Date.now()]);
+      await client.query('COMMIT');
+      user.balance=next; saveAuthStore(authStore);
+      return res.json({ok:true,balance:next,charged:amount,local:false});
+    }catch(err){
+      await client.query('ROLLBACK').catch(()=>{});
+      console.error('[Billing] Download charge failed:',err.message);
+      return res.status(503).json({ok:false,error:'Download charge সম্পন্ন হয়নি। আবার চেষ্টা করুন।'});
+    }finally{client.release();}
+  }
+  const userKey=String(user.id)+':'+key;
+  if(localUsageCharges.has(userKey))return res.json({ok:true,balance:Number(user.balance)||0,charged:0,alreadyCharged:true,local:true});
+  const current=Number(user.balance)||0;
+  if(current<amount)return res.status(402).json({ok:false,error:'Balance পর্যাপ্ত নয়।',balance:current,required:amount});
+  user.balance=Math.round((current-amount)*100)/100;
+  localUsageCharges.set(userKey,{amount,balance:user.balance});
+  saveAuthStore(authStore); await recordBalanceChange(user,-amount,'download_charge','Certificate download');
+  return res.json({ok:true,balance:user.balance,charged:amount,local:true});
 });
 app.get('/api/admin/users',requireAdmin,(req,res)=>res.json({ok:true,users:authStore.users.map(u=>{const {passwordHash,accessToken,...safe}=u;return {...safe,loginLink:createUserLoginLink(u)};})}));
 app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};const cleanUsername=String(username||'').trim();if(!cleanUsername||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(cleanUsername.length<3||cleanUsername.length>64)return res.status(400).json({ok:false,error:'Username ৩ থেকে ৬৪ অক্ষরের হতে হবে।'});if(String(password).length<8)return res.status(400).json({ok:false,error:'Password কমপক্ষে ৮ অক্ষরের হতে হবে।'});if(authStore.users.some(u=>u.username.toLowerCase()===cleanUsername.toLowerCase()))return res.status(409).json({ok:false,error:'এই Username আগে থেকেই আছে।'});const user={id:newToken().slice(0,16),username:cleanUsername,name:String(name||'').trim(),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:4};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,accessToken,...safe}=user;res.json({ok:true,user:safe,link:createUserLoginLink(user),message:'User তৈরি হয়েছে। User link ও Username/Password দিয়ে লগইন করুন।'});});
