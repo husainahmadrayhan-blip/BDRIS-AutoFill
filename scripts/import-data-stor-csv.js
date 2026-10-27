@@ -57,8 +57,9 @@ if (!fs.existsSync(absoluteFile) || !fs.statSync(absoluteFile).isFile()) {
 const pool = new Pool({ connectionString: databaseUrl, max: 2, connectionTimeoutMillis: 15000 });
 const counters = {
   rows: 0, inserted: 0, updated: 0, skipped: 0,
-  invalidBRN: 0, invalidDOB: 0, duplicate: 0, failed: 0
+  invalidBRN: 0, blankDOB: 0, invalidDOB: 0, duplicate: 0, failed: 0
 };
+const invalidDOBSamples = [];
 const seen = new Set();
 
 function parseCsvLine(line) {
@@ -129,6 +130,7 @@ async function main() {
     const stream = fs.createReadStream(absoluteFile, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     let headerMap = null;
+    let physicalLineNumber = 0;
     let batch = [];
     const flush = async () => {
       if (!batch.length) return;
@@ -176,6 +178,7 @@ async function main() {
     };
 
     for await (const line of rl) {
+      physicalLineNumber++;
       if (!line.trim()) continue;
       const fields = parseCsvLine(line);
       if (!headerMap) {
@@ -195,11 +198,18 @@ async function main() {
       }
       counters.rows++;
       const brn = normalizeBrn(fields[headerMap.brn]);
-      const dob = normalizeDob(fields[headerMap.dob]);
+      const rawDob = String(fields[headerMap.dob] || '').trim();
       if (!/^[0-9]{17}$/.test(brn)) { counters.invalidBRN++; counters.skipped++; continue; }
       if (seen.has(brn)) { counters.duplicate++; counters.skipped++; continue; }
       seen.add(brn);
-      if (!dob) { counters.invalidDOB++; counters.skipped++; continue; }
+      if (!rawDob) { counters.blankDOB++; counters.skipped++; continue; }
+      const dob = normalizeDob(rawDob);
+      if (!dob) {
+        counters.invalidDOB++;
+        counters.skipped++;
+        if (invalidDOBSamples.length < 30) invalidDOBSamples.push({ line: physicalLineNumber, dob: rawDob });
+        continue;
+      }
       const row = {
         brn, dob,
         name_bn: normalizeText(fields[headerMap.name_bn]),
@@ -214,7 +224,12 @@ async function main() {
     }
     if (!headerMap) throw new Error('CSV file is empty or has no header row.');
     await flush();
-    console.log(JSON.stringify({ mode: dryRun ? 'DRY RUN - no database changes made' : 'IMPORT COMPLETE', file: absoluteFile, ...counters }, null, 2));
+    console.log(JSON.stringify({
+      mode: dryRun ? 'DRY RUN - no database changes made' : 'IMPORT COMPLETE',
+      file: absoluteFile,
+      ...counters,
+      invalidDOBSamples
+    }, null, 2));
   } finally {
     client.release();
   }
