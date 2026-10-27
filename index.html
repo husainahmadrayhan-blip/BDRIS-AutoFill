@@ -1116,12 +1116,12 @@ async function createOrSelectPDFImage(name){
 }
 async function selectPDFImage(img){
   if(!img)return;
-  selectedPDFImageId=img.id; selectedPDFImageName=img.name; selectedPDFImageDataUrl=''; applySavedPDFImagePosition(img.id); const sealToggle=$('printWithSeal'); if(sealToggle){sealToggle.disabled=!img.hasImage; sealToggle.checked=!!img.hasImage;} pdfBlob=null; if(pdfUrl){URL.revokeObjectURL(pdfUrl);pdfUrl=null;} pdfPreviewNeedsHistorySave=true; renderPDFImageLibrary();
+  selectedPDFImageId=img.id; selectedPDFImageName=img.name; selectedPDFImageDataUrl=''; const hasSavedPosition=applySavedPDFImagePosition(img.id); if(!hasSavedPosition){imagePositionX=105;imagePositionY=247;imageZoom=100;imageWidth=24;imageHeight=10;} const sealToggle=$('printWithSeal'); if(sealToggle){sealToggle.disabled=!img.hasImage; sealToggle.checked=!!img.hasImage;} pdfBlob=null; if(pdfUrl){URL.revokeObjectURL(pdfUrl);pdfUrl=null;} pdfPreviewNeedsHistorySave=true; renderPDFImageLibrary();
   if(!img.hasImage){ pendingPDFImageId=img.id; openPDFImageUpload(img.id); return; }
   try{
     const r=await fetch('/api/pdf-images/'+encodeURIComponent(img.id)+'?v='+encodeURIComponent(img.updatedAt||Date.now()), {cache:'no-store'}); const d=await r.json();
     if(!r.ok||!d.ok)throw new Error(d.error||'Image পাওয়া যায়নি');
-    selectedPDFImageDataUrl=d.dataUrl||''; if(!getSavedPDFImagePosition(img.id)){ if(imageWidth===100&&imageHeight===100){imageWidth=24;imageHeight=10;} if(!Number.isFinite(imagePositionX))imagePositionX=105; if(!Number.isFinite(imagePositionY))imagePositionY=247; } updatePDFImageAdjustUI(); status('“'+img.name+'” PDF-তে select হয়েছে। Certificate-এর যেকোনো জায়গায় Click করে Image বসান।','ok');
+    selectedPDFImageDataUrl=d.dataUrl||''; updatePDFImageAdjustUI(); status('“'+img.name+'” PDF-তে select হয়েছে। '+(hasSavedPosition?'Saved position প্রয়োগ হয়েছে।':'⚠️ এই Image-এর saved position পাওয়া যায়নি। অন্য Image-এর position ব্যবহার করা হয়নি; Preview-তে Image manually ঠিক করে Position Save করুন।') ,'ok');
     if($('certPreview')?.style.display!=='none'){ await previewPDF({skipCharge:true}); }
   }catch(e){selectedPDFImageId='';selectedPDFImageName='';selectedPDFImageDataUrl='';renderPDFImageLibrary();status('Image load ব্যর্থ: '+e.message,'err');}
 }
