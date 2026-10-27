@@ -841,7 +841,7 @@ function getSavedPDFImagePosition(id){
   // Keep the old localStorage fallback for backward compatibility.
   try{ const all=JSON.parse(localStorage.getItem(PDF_IMAGE_POSITION_KEY)||'{}'); const v=all[id]; if(!v)return null; return {x:Number(v.x),y:Number(v.y),z:Number(v.z),w:Number(v.w),h:Number(v.h)}; }catch(_){ return null; }
 }
-function savePDFImagePosition(id=selectedPDFImageId, silent=false){
+async function savePDFImagePosition(id=selectedPDFImageId, silent=false){
   if(!id)return false;
   const position={x:Number(imagePositionX)||105,y:Number(imagePositionY)||247,z:Number(imageZoom)||100,w:Number(imageWidth)||24,h:Number(imageHeight)||10,savedAt:Date.now()};
   try{
@@ -1360,7 +1360,7 @@ function setQRStatus(text, type = "") {
   el.style.color = type === "err" ? "#9b1c1c" : type === "ok" ? "#176b35" : "#68737e";
 }
 
-function generateQRImage(link) {
+async function generateQRImage(link) {
   return new Promise((resolve, reject) => {
     if (!link) return reject(new Error("QR Link দিন।"));
     fetch("/api/qr", {
