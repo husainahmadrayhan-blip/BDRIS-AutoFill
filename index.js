@@ -672,16 +672,43 @@ app.post('/api/auth/login',(req,res)=>{
   if(!user&&userId) user=authStore.users.find(u=>u.id===String(userId));
   if(!user&&auth){const r=openUserPayload(auth);if(r&&(!accessToken||r.accessToken===accessToken)&&(!userId||r.id===String(userId||r.id))&&r.username===username&&r.enabled!==false&&r.passwordHash===hashPassword(password)){user={...r,deviceId:'',lastLoginAt:null,balance:Number(r.balance)||0};const i=authStore.users.findIndex(u=>u.id===user.id);if(i>=0)authStore.users[i]=user;else authStore.users.push(user);saveAuthStore(authStore);}}
   if(!user) user=authStore.users.find(u=>u.username===username);
+  // If the in-memory user cache is stale, resolve the account from Neon before rejecting login.
+  if ((!user || user.username!==username || user.passwordHash!==hashPassword(password)) && pool && dbReady) {
+    try {
+      const dbUser = await pool.query('SELECT * FROM fil_users WHERE username=$1 LIMIT 1',[username]);
+      if (dbUser.rowCount) {
+        const row=dbUser.rows[0];
+        user={id:String(row.id),username:row.username,name:row.name||'',passwordHash:row.password_hash,accessToken:row.access_token,enabled:row.enabled,deviceId:row.device_id||'',createdAt:Number(row.created_at)||Date.now(),lastLoginAt:row.last_login_at==null?null:Number(row.last_login_at),balance:Number(row.balance)||0,previewRate:Number(row.preview_rate??4)};
+        const at=authStore.users.findIndex(u=>String(u.id)===String(user.id));
+        if(at>=0)authStore.users[at]=user;else authStore.users.push(user);
+      }
+    } catch(err) { console.error('[Auth] Neon user lookup failed:',err.message); }
+  }
   if(!user||!user.enabled) return res.status(403).json({ok:false,error:'এই User account সক্রিয় নেই।'});
   if(user.username!==username||user.passwordHash!==hashPassword(password)) return res.status(401).json({ok:false,error:'Username বা Password ভুল।'});
   if(user.deviceId&&user.deviceId!==deviceId) return res.status(403).json({ok:false,error:'এই User account অন্য একটি device-এর সাথে যুক্ত আছে।'});
   if(!user.deviceId) user.deviceId=deviceId;
-  user.lastLoginAt=Date.now(); saveAuthStore(authStore);
+  user.lastLoginAt=Date.now();
+  if(pool&&dbReady){
+    try { await pool.query('UPDATE fil_users SET device_id=$1,last_login_at=$2 WHERE id=$3',[user.deviceId,user.lastLoginAt,String(user.id)]); }
+    catch(err){ console.error('[Auth] Neon login metadata update failed:',err.message); }
+  }
+  saveAuthStore(authStore);
   const token=newToken();
   authSessions.set(token,{kind:'user',userId:user.id,username:user.username,name:user.name||'',accessToken:user.accessToken,createdAt:Date.now()});
   res.json({ok:true,token,auth:sealUserPayload(user),balance:Number(user.balance)||0,user:{id:user.id,username:user.username,name:user.name||''}});
 });
-app.post('/api/auth/admin-login',(req,res)=>{const {username,password}=req.body||{};if(username!==authStore.admin.username||hashPassword(password||'')!==authStore.admin.passwordHash)return res.status(401).json({ok:false,error:'Admin username বা password ভুল।'});const token=newToken();authSessions.set(token,{kind:'admin',username,createdAt:Date.now()});res.json({ok:true,token});});
+app.post('/api/auth/admin-login',async(req,res)=>{
+  const {username,password}=req.body||{};
+  let admin=authStore.admin;
+  if(pool&&dbReady){
+    try { const q=await pool.query("SELECT setting_value FROM fil_admin_settings WHERE setting_key='admin'"); if(q.rowCount&&q.rows[0].setting_value?.username)admin=q.rows[0].setting_value; }
+    catch(err){ console.error('[Auth] Neon admin lookup failed:',err.message); }
+  }
+  if(username!==admin.username||hashPassword(password||'')!==admin.passwordHash)return res.status(401).json({ok:false,error:'Admin username বা password ভুল।'});
+  authStore.admin=admin;
+  const token=newToken();authSessions.set(token,{kind:'admin',username,createdAt:Date.now()});res.json({ok:true,token});
+});
 function requireAuth(req,res,next){
   // LOCAL DIRECT MODE: never require a user account for the main local application.
   // Admin endpoints are still protected by requireAdmin.
