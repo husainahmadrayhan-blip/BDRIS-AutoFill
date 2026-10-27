@@ -611,7 +611,36 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 @keyframes uiRipplePremium{0%{transform:scale(0);opacity:.7}55%{transform:scale(1);opacity:.28}100%{transform:scale(1.35);opacity:0}}
 @keyframes buttonShine{0%{transform:translateX(-75%) rotate(8deg)}100%{transform:translateX(75%) rotate(8deg)}}
 @media (prefers-reduced-motion:reduce){body:not(.login-locked) button,body:not(.login-locked) .btn{transition:none!important}body:not(.login-locked) button::after,body:not(.login-locked) .btn::after,.ui-ripple{animation:none!important}}
-</style></head>
+</style>
+/* Responsive safety pass: preserve certificate dimensions while preventing mobile overflow. */
+<style id="responsive-safety-update">
+html,body{max-width:100%;overflow-x:hidden}
+img,iframe,video,canvas,svg{max-width:100%}
+.wrap,.main,.container,.dashboard,.content,.app-shell,.pdf-preview-workspace,.pdf-preview-frame{min-width:0;max-width:100%}
+input,select,textarea,button{max-width:100%;box-sizing:border-box}
+.cert-preview{width:100%;min-width:0;overflow:auto;max-height:none;padding:clamp(8px,2vw,20px)}
+.cert-preview iframe{display:block;width:100%;height:min(78vh,900px);min-height:420px}
+.pdf-preview-workspace{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.pdf-preview-frame{min-width:0;width:100%;overflow:auto;background:#eef2f6}
+.preview-download-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.preview-download-bar button{flex:0 1 auto;min-width:0;white-space:normal}
+@media(max-width:760px){
+  .wrap{margin:0 auto;padding:12px;border-radius:0}
+  .cert-preview{margin-top:14px;border-radius:8px}
+  .cert-preview iframe{height:72vh;min-height:360px}
+  .preview-download-bar{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+  .preview-download-bar button,.preview-download-bar label{width:100%;margin:0!important}
+  .grid,#allFields{grid-template-columns:minmax(0,1fr)!important}
+  .actions,.type-buttons,.history-actions{flex-wrap:wrap}
+  .pdf-image-list{max-width:100%;min-width:0}
+}
+@media(max-width:430px){
+  .wrap{padding:8px}
+  .cert-preview{padding:7px}
+  button{padding:10px 12px}
+}
+</style>
+</head>
 <body><div id="loginScreen"><div class="login-brand"><div class="login-brand-mark">🔒</div><div>BDRIS<small>BRT MAK</small></div></div><div class="login-grid"><section class="lamp-stage"><div class="lamp-glow"></div><div class="lamp-platform"></div><div class="walking-person" aria-hidden="true"><div class="person-head"></div><div class="person-hair"></div><div class="person-body"></div><div class="person-arm back"></div><div class="person-arm pointing"></div><div class="person-hand"></div><div class="person-leg left"></div><div class="person-leg right"></div><div class="person-shoe shoe-left"></div><div class="person-shoe shoe-right"></div></div><div class="lamp"><div class="lamp-shade"></div><div class="lamp-light"></div><div class="lamp-face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"><span class="tongue"></span></span></div><div class="lamp-pole"></div><div class="lamp-base"></div><div class="pull-rope"></div></div></section><section class="login-card"><div class="login-icon">♙</div><h2>Welcome Back</h2><div class="subtitle">Login to your account</div><form id="loginForm"><div class="login-field"><label>USERNAME</label><input id="loginUsername" autocomplete="username" placeholder="Enter your username" required><span class="field-icon">♙</span></div><div class="login-field"><label>PASSWORD</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><span class="field-icon">🔒</span></div><div class="login-options"><label class="remember"><input type="checkbox" checked> Remember me</label><span>Secure Access</span></div><button class="login-btn" id="loginBtn" type="submit">LOGIN&nbsp;&nbsp;→</button><div class="login-message" id="loginMessage"></div></form><div class="secure-note">🔐 <span>Secure</span> • <span>Private</span> • <span>Protected</span></div></section></div></div><div id="appShell"><div class="wrap">
 <div class="app-head"><div class="app-brand"><img class="app-logo" src="govt-logo.png" alt="BDRIS"><div><h1>BDRIS</h1><p class="brand-en">Birt Certified Mak</p></div></div><div class="online-pill"><span></span> System Online</div></div>
 <p class="sub">জন্ম নিবন্ধন নাম্বার আর জন্ম তারিখ দিয়ে Sertifiket Mak করুন</p>
@@ -744,6 +773,7 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
     </label>
     <button type="button" class="close-preview" onclick="savePDFImagePosition()">💾 পজিশন সেভ করুন</button>
     <button type="button" class="close-preview" onclick="closeCertificatePreview()">✕ প্রিভিউ বন্ধ করুন</button>
+    <button type="button" class="close-preview" onclick="printCertificate()">🖨️ Certificate Print</button>
     <button type="button" class="download-cert" onclick="downloadPDF()">⬇️ সার্টিফিকেট ডাউনলোড</button>
   </div>
 </div>
@@ -2615,6 +2645,24 @@ async function previewPDF(options={}){
   const previewPromise = generatePDF({saveHistory:false,showPreviewEarly:true});
   setTimeout(()=>$('certPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),40);
   await previewPromise;
+}
+
+async function printCertificate() {
+  try {
+    if (!pdfBlob || pdfPreviewNeedsHistorySave) await generatePDF({saveHistory:false});
+    if (!pdfBlob || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
+    // Printing opens the exact generated PDF; browser cannot reliably confirm physical print completion.
+    const printUrl = URL.createObjectURL(pdfBlob);
+    const printWindow = window.open(printUrl, '_blank', 'noopener');
+    if (!printWindow) {
+      URL.revokeObjectURL(printUrl);
+      throw new Error('Print window block হয়েছে। Browser popup অনুমতি দিন।');
+    }
+    status('Certificate PDF খোলা হয়েছে। নতুন ট্যাবে Print ব্যবহার করুন।', 'ok');
+    setTimeout(() => URL.revokeObjectURL(printUrl), 60000);
+  } catch (e) {
+    status('Certificate print প্রস্তুত করা যায়নি: ' + e.message, 'err');
+  }
 }
 
 async function downloadPDF() {
