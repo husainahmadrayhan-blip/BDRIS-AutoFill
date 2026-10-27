@@ -44,3 +44,23 @@ Set `DATABASE_URL`, `AUTH_SECRET`, `ADMIN_USERNAME`, and a strong `ADMIN_PASSWOR
 - No live PostgreSQL instance was available in this workspace, so migrations and transaction behavior have not been integration-tested against a real database.
 - No live hosting deployment was performed because hosting access/settings were not supplied.
 - No live BDRIS or payment-provider end-to-end test was performed. Payment approval is an admin-controlled manual confirmation workflow; it does not automatically verify bKash/Nagad transactions.
+
+
+## Update branch notes — 2026-10-27
+
+The branch `fix/neon-pdf-image-persistence-2026-10-27` contains additional in-progress work. These changes are not a claim of a completed production deployment.
+
+- Certificate preview no longer calls the old preview-charge function; preview is intended to remain free.
+- Added a Certificate Print button that opens the generated PDF in a browser tab. The app cannot verify that a physical print completed.
+- Added responsive preview CSS, Image Library name search, lazy thumbnail loading, and opt-in registrar-office image auto-selection using the existing `/api/bot/pdf-image-match` endpoint.
+- Added a regression test file for the UI and additive image metadata migration, and a GitHub Actions workflow intended to run `npm test`.
+- Neon image metadata now includes an additive `file_size` column. Removed image records are soft-deleted from the active list rather than deleting their database rows, so historical bytes may remain in Neon for recovery.
+- Static JavaScript parsing and targeted source assertions were checked through the GitHub source contents. The full `npm test`, real Neon CRUD/migration, browser viewport, print, and Render redeploy checks have not yet been confirmed in this environment.
+
+## Remaining work / explicitly not verified
+
+- Data Stor is a separate Next.js application with its own session, database, and wallet rules. The current menu entry opens its existing search page; shared login/SSO or a server-side proxy is not implemented. Do not expose Data Stor credentials or copy its database into AutoFill without a separately reviewed integration.
+- Download and Print charge rates are not configured as explicit separate rates in the current AutoFill code. Do not infer them from `previewRate`; preview must remain free. Define and approve the rate and print billing trigger before implementing a debit.
+- SutonnyMJ and Suleman Sharif Ambad font files were not found at the expected repository paths. Their actual font binaries and licensing/encoding details are required before adding them to the selector or claiming PDF embedding support.
+- The updated branch has not been merged into `main`, and a Render deployment of these latest commits has not been verified.
+- A complete project ZIP, runtime/browser tests, live DB checks, and responsive visual checks remain outstanding.
