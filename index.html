@@ -791,13 +791,13 @@ body.service-transactions #premiumDashboard{display:block!important}body.service
     <button type="button" onclick="openServiceWindow('pdf-image')"><span class="nav-emoji">🖼</span> PDF Image <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('pdf-history')"><span class="nav-emoji">📚</span> PDF History <span class="nav-arrow">›</span></button>
     <button type="button" onclick="closeSideMenu();window.open('https://data-stor.vercel.app/search','_blank','noopener,noreferrer')"><span class="nav-emoji">🗂️</span> নিবন্ধন ডাটা <span class="nav-arrow">↗</span></button>
-    <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('My Profile')"><span class="nav-emoji">👤</span> My Profile <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="closeSideMenu();openServiceWindow('profile')"><span class="nav-emoji">👤</span> My Profile <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openPaymentRecharge()"><span class="nav-emoji">💳</span> Add Balance <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('transactions')"><span class="nav-emoji">📄</span> Transaction History <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('Change Password')"><span class="nav-emoji">🔑</span> Change Password <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('How to Use')"><span class="nav-emoji">❓</span> How to Use <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="openPaymentSupport()"><span class="nav-emoji">☎</span> Contact Support <span class="nav-arrow">›</span></button>
-    <button type="button" class="logout-option" onclick="logoutFromMenu()"><span class="nav-emoji">🚪</span> Logout <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="closeSideMenu();openServiceWindow('password')"><span class="nav-emoji">🔑</span> Change Password <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="closeSideMenu();openServiceWindow('how-to')"><span class="nav-emoji">❓</span> How to Use <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="closeSideMenu();openServiceWindow('contact')"><span class="nav-emoji">☎</span> Contact Support <span class="nav-arrow">›</span></button>
+    <button type="button" class="logout-option" onclick="openServiceWindow('logout')"><span class="nav-emoji">🚪</span> Logout <span class="nav-arrow">›</span></button>
   </nav>
   <div class="side-card pdf-image-panel">
     <h3>🖼 PDF Image <span id="pdfImageCount" class="badge">0</span></h3><div class="pdf-image-select-label">🖋️ সীল / Image সিলেক্ট করুন</div>
@@ -928,7 +928,7 @@ function renderAccountServiceWindow(service){
  }else if(service==='contact'){
   content='<div class="account-service-tip">রিচার্জ, লগইন বা সার্ভিস সমস্যায় নিচের বাটনে চাপ দিয়ে WhatsApp Support খুলুন। ব্যক্তিগত পাসওয়ার্ড বা সম্পূর্ণ BRN চ্যাটে পাঠাবেন না।</div><div class="account-service-actions"><a href="https://wa.me/8801331167629?text=BDRIS%20Support" target="_blank" rel="noopener noreferrer">☎️ WhatsApp Support খুলুন</a></div>';
  }else if(service==='logout'){
-  content='<div class="account-service-tip">Logout করলে বর্তমান ব্রাউজারের লগইন টোকেন মুছে যাবে। পরে ব্যবহার করতে আবার লগইন করতে হবে।</div><div class="account-service-actions"><button type="button" onclick="logoutFromMenu()">🚪 নিশ্চিত Logout</button><button type="button" class="secondary" onclick="window.close()">বাতিল</button></div>';
+  content='<div class="account-service-tip">Logout করলে বর্তমান ব্রাউজারের লগইন টোকেন মুছে যাবে। পরে ব্যবহার করতে আবার লগইন করতে হবে।</div><div class="account-service-actions"><button type="button" onclick="openServiceWindow('logout')">🚪 নিশ্চিত Logout</button><button type="button" class="secondary" onclick="window.close()">বাতিল</button></div>';
  }
  root.innerHTML='<section class="account-service-card"><header class="account-service-head"><div><h2>'+page.icon+' '+page.title+'</h2><div class="account-service-muted">'+page.subtitle+'</div></div>'+closeButton+'</header>'+content+'</section>';
  if(service==='profile')loadAccountProfile();
