@@ -30,7 +30,9 @@ const { Pool } = require('pg');
 const { resolvePdfImageStorage } = require('./pdf-image-storage');
 const app = express();
 
-app.use(cors());
+// Restrict cross-origin browser access. Data Stor mutations also validate same origin.
+const allowedOrigins = new Set(String(process.env.ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean));
+app.use(cors({ origin(origin, callback) { if (!origin) return callback(null, false); if (allowedOrigins.has(origin)) return callback(null, origin); return callback(new Error('Origin not allowed')); }, credentials: true }));
 app.use((req,res,next)=>{
   if(req.path==='/' || req.path.endsWith('.html') || req.path.startsWith('/api/')){
     res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -773,6 +775,12 @@ app.post('/api/automation/jobs/:id/cancel',requireUserAuth,(req,res)=>forwardAut
 
 
 const DATA_STOR_UNLOCK_PRICE=30;
+function dataStorSameOrigin(req) {
+ const origin=String(req.get('origin')||''),host=String(req.get('host')||''),type=String(req.get('content-type')||'').split(';')[0].trim().toLowerCase();
+ if(type!=='application/json')return false;if(!origin)return true;
+ try{const p=new URL(origin);return p.host===host&&(p.protocol==='https:'||p.hostname==='localhost'||p.hostname==='127.0.0.1');}catch(_){return false;}
+}
+function dataStorNoStore(res){res.set('Cache-Control','no-store, no-cache, must-revalidate');res.set('Pragma','no-cache');}
 const dataStorRateBuckets=new Map();
 function allowDataStorAction(userId,action,maxCount=60){
  const key=String(userId)+':'+action,now=Date.now();let item=dataStorRateBuckets.get(key);
@@ -812,7 +820,7 @@ function parseDataStorCsv(text){
 }
 app.get('/api/data-stor/stats',requireUserAuth,async(req,res)=>{
  const user=dataStorUser(req,res);if(!user)return;if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
- try{const q=await pool.query("SELECT count(*)::int total FROM birth_records");const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1',[String(user.id)]);res.set('Cache-Control','no-store');res.json({ok:true,total:Number(q.rows[0]?.total)||0,balance:Number(b.rows[0]?.balance??user.balance)||0});}
+ try{const q=await pool.query("SELECT count(*)::int total FROM birth_records");const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)]);if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});dataStorNoStore(res);res.json({ok:true,total:Number(q.rows[0]?.total)||0,balance:Number(b.rows[0].balance)||0});}
  catch(e){console.error('[Data Stor] stats failed:',e.message);res.status(503).json({ok:false,error:'Data Stor statistics লোড করা যায়নি।'});}
 });
 app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
@@ -826,32 +834,48 @@ app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
  try{const count=await pool.query('SELECT count(*)::int total FROM birth_records'+clause,vals);
  const q=await pool.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records'+clause+' ORDER BY id LIMIT $'+(vals.length+1)+' OFFSET $'+(vals.length+2),[...vals,limit,(page-1)*limit]);
  const ids=q.rows.map(r=>String(r.id)),unlocked=ids.length?await pool.query('SELECT record_id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=ANY($2::bigint[])',[String(user.id),ids]):{rows:[]},set=new Set(unlocked.rows.map(r=>String(r.record_id)));
- const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1',[String(user.id)]);
- res.set('Cache-Control','no-store');res.json({ok:true,total:Number(count.rows[0]?.total)||0,page,limit,pages:Math.ceil((Number(count.rows[0]?.total)||0)/limit),balance:Number(b.rows[0]?.balance??user.balance)||0,results:q.rows.map(r=>{const isUnlocked=set.has(String(r.id));const item={id:Number(r.id),maskedBrn:dataStorMask(r.brn),unlocked:isUnlocked,price:DATA_STOR_UNLOCK_PRICE,dob:r.dob,bn:r.bn,en:r.en,gender:r.gender};if(isUnlocked)item.brn=r.brn;return item;})});}
+ const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)]);
+ if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});
+ dataStorNoStore(res);res.json({ok:true,total:Number(count.rows[0]?.total)||0,page,limit,pages:Math.ceil((Number(count.rows[0]?.total)||0)/limit),balance:Number(b.rows[0].balance)||0,results:q.rows.map(r=>{const isUnlocked=set.has(String(r.id));const item={id:Number(r.id),maskedBrn:dataStorMask(r.brn),unlocked:isUnlocked,price:DATA_STOR_UNLOCK_PRICE,dob:r.dob,bn:r.bn,en:r.en,gender:r.gender};if(isUnlocked)item.brn=r.brn;return item;})});}
  catch(e){console.error('[Data Stor] search failed:',e.message);res.status(503).json({ok:false,error:'Search ব্যর্থ হয়েছে।'});}
 });
 app.get('/api/data-stor/records/:id',requireUserAuth,async(req,res)=>{
  const user=dataStorUser(req,res);if(!user)return;const id=String(req.params.id||'');if(!/^[1-9]\d{0,14}$/.test(id))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
  if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
  try{const q=await pool.query('SELECT b.id,b.brn,b.dob::text dob,b.name_bn bn,b.name_en en,b.gender FROM birth_records b JOIN fil_data_record_unlocks u ON u.record_id=b.id WHERE u.user_id=$1 AND b.id=$2',[String(user.id),id]);
- if(!q.rowCount)return res.status(403).json({ok:false,error:'এই রেকর্ডটি আনলক করা নেই।'});res.set('Cache-Control','no-store');res.json({ok:true,record:q.rows[0]});}
+ if(!q.rowCount)return res.status(403).json({ok:false,error:'এই রেকর্ডটি আনলক করা নেই।'});dataStorNoStore(res);res.json({ok:true,record:q.rows[0]});}
  catch(e){console.error('[Data Stor] record read failed:',e.message);res.status(503).json({ok:false,error:'Record load ব্যর্থ হয়েছে।'});}
 });
 app.post('/api/data-stor/records/:id/unlock',requireUserAuth,async(req,res)=>{
- const user=dataStorUser(req,res);if(!user)return;if(!allowDataStorAction(user.id,'unlock',20))return res.status(429).json({ok:false,error:'অনেক বেশি unlock request হয়েছে। এক মিনিট পরে চেষ্টা করুন।'});const id=String(req.params.id||'');if(!/^[1-9]\d{0,14}$/.test(id)||!Number.isSafeInteger(Number(id)))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
- if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});const client=await pool.connect();
- try{await client.query('BEGIN');const bal=await client.query('SELECT balance FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);if(!bal.rowCount){await client.query('ROLLBACK');return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});}
- const rec=await client.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records WHERE id=$1',[id]);if(!rec.rowCount){await client.query('ROLLBACK');return res.status(404).json({ok:false,error:'Record পাওয়া যায়নি।'});}
- const prev=await client.query('SELECT id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=$2',[String(user.id),id]),current=Number(bal.rows[0].balance)||0;
- if(prev.rowCount){await client.query('COMMIT');user.balance=current;return res.json({ok:true,alreadyUnlocked:true,charged:0,balance:current,record:rec.rows[0]});}
- if(current<DATA_STOR_UNLOCK_PRICE){await client.query('ROLLBACK');return res.status(402).json({ok:false,error:'নতুন রেকর্ড আনলক করতে ৳৩০ প্রয়োজন।',balance:current,required:30});}
- const next=Math.round((current-DATA_STOR_UNLOCK_PRICE)*100)/100,now=Date.now(),key='data-stor-record:'+id;
- await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
- await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),key,30,next,now]);
- await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),user.username,'data_stor_unlock',-30,next,'Data Stor record unlock id='+id,now]);
- await client.query('INSERT INTO fil_data_record_unlocks(user_id,record_id,price,created_at) VALUES($1,$2,$3,$4)',[String(user.id),id,30,now]);await client.query('COMMIT');user.balance=next;
- res.set('Cache-Control','no-store');res.json({ok:true,alreadyUnlocked:false,charged:30,balance:next,record:rec.rows[0]});}
- catch(e){await client.query('ROLLBACK').catch(()=>{});console.error('[Data Stor] unlock transaction failed:',e.message);res.status(503).json({ok:false,error:'Unlock ব্যর্থ হয়েছে; ব্যালেন্স ও রেকর্ড যাচাই করে আবার চেষ্টা করুন।'});}finally{client.release();}
+ const user=dataStorUser(req,res);if(!user)return;
+ if(!dataStorSameOrigin(req))return res.status(403).json({ok:false,error:'অবৈধ অনুরোধ।'});
+ const id=String(req.params.id||'');if(!/^[1-9]\d{0,14}$/.test(id)||!Number.isSafeInteger(Number(id)))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
+ if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
+ if(!allowDataStorAction(user.id,'unlock',20))return res.status(429).json({ok:false,error:'অনেক বেশি unlock request হয়েছে। এক মিনিট পরে চেষ্টা করুন।'});
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const bal=await client.query('SELECT balance,enabled,username FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);
+  if(!bal.rowCount||bal.rows[0].enabled!==true){await client.query('ROLLBACK');return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি বা নিষ্ক্রিয়।'});}
+  const rec=await client.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records WHERE id=$1',[id]);
+  if(!rec.rowCount){await client.query('ROLLBACK');return res.status(404).json({ok:false,error:'Record পাওয়া যায়নি।'});}
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',[String(user.id),id]);
+  const prev=await client.query('SELECT id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=$2',[String(user.id),id]);
+  const current=Number(bal.rows[0].balance);if(!Number.isFinite(current)||current<0)throw new Error('INVALID_STORED_BALANCE');
+  if(prev.rowCount){await client.query('COMMIT');user.balance=current;dataStorNoStore(res);return res.json({ok:true,alreadyUnlocked:true,charged:0,balance:current,record:rec.rows[0]});}
+  if(current<DATA_STOR_UNLOCK_PRICE){await client.query('ROLLBACK');dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড আনলক করতে ৳৩০ প্রয়োজন।',balance:current,required:DATA_STOR_UNLOCK_PRICE});}
+  const next=Math.round((current-DATA_STOR_UNLOCK_PRICE)*100)/100,now=Date.now(),key='data-stor-record:'+id;
+  await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
+  await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),key,DATA_STOR_UNLOCK_PRICE,next,now]);
+  await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),String(bal.rows[0].username||user.username),'data_stor_unlock',-DATA_STOR_UNLOCK_PRICE,next,'Data Stor record unlock id='+id,now]);
+  await client.query('INSERT INTO fil_data_record_unlocks(user_id,record_id,price,created_at) VALUES($1,$2,$3,$4)',[String(user.id),id,DATA_STOR_UNLOCK_PRICE,now]);
+  await client.query('COMMIT');user.balance=next;dataStorNoStore(res);
+  return res.json({ok:true,alreadyUnlocked:false,charged:DATA_STOR_UNLOCK_PRICE,balance:next,record:rec.rows[0]});
+ }catch(e){
+  await client.query('ROLLBACK').catch(()=>{});
+  console.error('[Data Stor] unlock transaction failed; database error redacted.');
+  return res.status(503).json({ok:false,error:'Unlock ব্যর্থ হয়েছে। কোনো charge বা unlock সংরক্ষণ করা হয়নি; পরে আবার চেষ্টা করুন।'});
+ }finally{client.release();}
 });
 app.get('/api/data-stor/admin/stats',requireAdmin,async(req,res)=>{
  if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
@@ -892,7 +916,11 @@ app.get('/api/account/history',requireUserAuth,async(req,res)=>{
  }catch(err){console.error('[Account history] query failed:',err.message);res.status(503).json({ok:false,error:'Account history ডাটাবেস থেকে লোড করা যায়নি।'});}
 });
 
-app.get('/api/balance',requireUserAuth,(req,res)=>{const user=authStore.users.find(u=>u.id===req.auth.userId);res.json({ok:true,balance:Number(user?.balance)||0,charged:0,local:!pool});});
+app.get('/api/balance',requireUserAuth,async(req,res)=>{
+ const user=authStore.users.find(u=>u.id===req.auth.userId);if(!user)return res.status(401).json({ok:false,error:'User account পাওয়া যায়নি।'});
+ if(pool&&dbReady){try{const q=await pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)]);if(!q.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});dataStorNoStore(res);return res.json({ok:true,balance:Number(q.rows[0].balance)||0,charged:0,local:false});}catch(e){console.error('[Balance] authoritative lookup failed.');return res.status(503).json({ok:false,error:'Database balance লোড করা যায়নি।'});}}
+ dataStorNoStore(res);return res.json({ok:true,balance:Number(user.balance)||0,charged:0,local:true});
+});
 // Preview is deliberately free. Keep the old endpoint as a compatibility alias.
 app.post('/api/balance/charge',requireUserAuth,(req,res)=>{
   const user=authStore.users.find(u=>u.id===req.auth.userId);
