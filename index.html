@@ -2887,17 +2887,25 @@ async function downloadPDF() {
   return downloadInFlight;
 }
 async function printPDF(){
-  // Open synchronously from the click so mobile browsers do not block the print tab.
-  const opened=window.open('about:blank','_blank');
-  if(!opened){status('Print করার জন্য browser popup অনুমতি দিন।','err');return;}
+  let opened=null;
   try{
+    // Generate the current certificate first; avoid printing a stale preview.
     if(!pdfBlob || pdfPreviewNeedsHistorySave) await generatePDF({saveHistory:false,showPreview:false});
     if(!pdfBlob || !pdfUrl || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
-    opened.location.href=pdfUrl;
-    status('PDF তৈরি হয়েছে। নতুন ট্যাবে খুলে Print করুন।','ok');
+    // Open synchronously when possible so mobile browsers allow the PDF tab.
+    opened=window.open('about:blank','_blank');
+    if(opened){
+      opened.document.title='Certificate PDF';
+      opened.location.replace(pdfUrl);
+      status('PDF নতুন ট্যাবে খোলা হচ্ছে। PDF viewer-এর Print/Share অপশন ব্যবহার করুন।','ok');
+      return;
+    }
+    // Popup blocked: open the PDF in this tab as a reliable fallback.
+    status('Popup বন্ধ আছে। একই ট্যাবে PDF খোলা হচ্ছে—সেখান থেকে Print/Share চাপুন।','ok');
+    window.location.assign(pdfUrl);
   }catch(e){
-    try{opened.close();}catch(_){}
-    status('Print-এর জন্য PDF তৈরি হয়নি: '+e.message,'err');
+    try{if(opened&&!opened.closed)opened.close();}catch(_){}
+    status('Print-এর জন্য PDF তৈরি হয়নি: '+(e?.message||'অজানা সমস্যা'),'err');
   }
 }
 
