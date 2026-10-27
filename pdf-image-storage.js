@@ -73,6 +73,7 @@ function resolvePdfImageStorage({
       return useEphemeralDirectory();
     }
     ensureWritableDirectory(directory, fsModule, cryptoModule);
+    if (render) logger.warn('[MAKE PDF IMAGE] PDF_IMAGE_STORAGE_DIR is outside the verified /var/data mount; filesystem storage is ephemeral. Use Neon database storage for durable image binaries.');
     return { directory, persistent: false };
   }
 
