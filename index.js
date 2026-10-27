@@ -236,6 +236,21 @@ async function initializeDatabase(){
       created_at bigint NOT NULL,
       PRIMARY KEY(user_id,idempotency_key)
     )`);
+    // Data Stor tables are additive and share AutoFill's existing Neon pool.
+    await client.query(`CREATE TABLE IF NOT EXISTS birth_records (
+      id bigserial PRIMARY KEY, brn varchar(17) NOT NULL UNIQUE, dob date NOT NULL,
+      name_bn varchar(300) NOT NULL DEFAULT '', name_en varchar(300) NOT NULL DEFAULT '',
+      gender varchar(20) NOT NULL DEFAULT ''
+    )`);
+    await client.query('CREATE INDEX IF NOT EXISTS birth_records_dob_idx ON birth_records(dob)');
+    await client.query('CREATE INDEX IF NOT EXISTS birth_records_name_bn_idx ON birth_records(name_bn)');
+    await client.query('CREATE INDEX IF NOT EXISTS birth_records_name_en_idx ON birth_records(name_en)');
+    await client.query(`CREATE TABLE IF NOT EXISTS fil_data_record_unlocks (
+      id bigserial PRIMARY KEY, user_id text NOT NULL, record_id bigint NOT NULL,
+      price numeric(14,2) NOT NULL DEFAULT 30, created_at bigint NOT NULL,
+      CONSTRAINT fil_data_record_unlocks_user_record_unique UNIQUE(user_id,record_id)
+    )`);
+    await client.query('CREATE INDEX IF NOT EXISTS fil_data_unlocks_user_created_idx ON fil_data_record_unlocks(user_id,created_at DESC)');
     const dbUsers = await client.query('SELECT * FROM fil_users ORDER BY created_at');
     if (!dbUsers.rowCount && (authStore.users||[]).length) {
       // One-time migration of existing local users to Neon on first setup.
@@ -704,6 +719,89 @@ async function forwardAutomationRequest(req,res,method,pathSuffix,body){
 app.post('/api/automation/jobs',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'POST','/api/jobs',req.body));
 app.get('/api/automation/jobs/:id',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'GET',`/api/jobs/${encodeURIComponent(req.params.id)}`));
 app.post('/api/automation/jobs/:id/cancel',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'POST',`/api/jobs/${encodeURIComponent(req.params.id)}/cancel`,{}));
+
+
+const DATA_STOR_UNLOCK_PRICE=30;
+function dataStorDob(value){
+ const p=String(value||'').trim().split(/[\\/-]/).map(Number);if(p.length!==3||p.some(n=>!Number.isInteger(n)))return '';
+ let y,m,d;if(p[0]>=1000)[y,m,d]=p;else[d,m,y]=p;
+ if(y<1000||y>9999||m<1||m>12||d<1||d>31)return '';
+ const x=new Date(Date.UTC(y,m-1,d));if(x.getUTCFullYear()!==y||x.getUTCMonth()!==m-1||x.getUTCDate()!==d)return '';
+ return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+function dataStorBrn(value){const s=String(value||'').trim().replace(/\\s+/g,'');return /^\\d{17}$/.test(s)?s:'';}
+function dataStorMask(value){return '•••••••••••••'+String(value||'').slice(-4);}
+function dataStorUser(req,res){
+ if(!req.auth||req.auth.kind!=='user'){res.status(401).json({ok:false,error:'AutoFill-এ লগইন করুন।'});return null;}
+ const user=authStore.users.find(u=>String(u.id)===String(req.auth.userId)&&u.enabled!==false);
+ if(!user){res.status(403).json({ok:false,error:'এই AutoFill অ্যাকাউন্ট সক্রিয় নেই।'});return null;}return user;
+}
+function parseDataStorCsv(text){
+ const input=String(text||'').replace(/^\\uFEFF/,'');const rows=[];let row=[],field='',quoted=false;
+ for(let i=0;i<input.length;i++){const ch=input[i];if(ch==='"'){if(quoted&&input[i+1]==='"'){field+='"';i++;}else quoted=!quoted;}
+ else if(ch===','&&!quoted){row.push(field);field='';}
+ else if((ch==='\\n'||ch==='\\r')&&!quoted){if(ch==='\\r'&&input[i+1]==='\\n')i++;row.push(field);field='';if(row.some(v=>String(v).trim()))rows.push(row);row=[];}
+ else field+=ch;}
+ row.push(field);if(row.some(v=>String(v).trim()))rows.push(row);if(rows.length<2)throw new Error('CSV header ও data row প্রয়োজন।');
+ const headers=rows.shift().map(v=>String(v||'').trim().toLowerCase().replace(/\\s+/g,' '));
+ const get=(r,names)=>{for(const n of names){const i=headers.indexOf(n.toLowerCase());if(i>=0)return String(r[i]??'').trim();}return '';};
+ const valid=[],seen=new Set(),summary={imported:0,updated:0,skipped:0,invalidBrn:0,invalidDate:0,duplicates:0};
+ for(const r of rows){const brn=dataStorBrn(get(r,['brn','birth registration number','birth_registration_number']));if(!brn){summary.invalidBrn++;summary.skipped++;continue;}
+ if(seen.has(brn)){summary.duplicates++;continue;}seen.add(brn);const dob=dataStorDob(get(r,['dob','date of birth','জন্ম তারিখ']));if(!dob){summary.invalidDate++;summary.skipped++;continue;}
+ const rawGender=get(r,['gender','লিঙ্গ']).toLowerCase();const gender=['m','male','পুরুষ'].includes(rawGender)?'male':(['f','female','নারী','মহিলা'].includes(rawGender)?'female':(['o','other','অন্যান্য'].includes(rawGender)?'other':rawGender));
+ valid.push({brn,dob,bn:get(r,['বাংলা নাম','name_bn','namebn','bangla name']),en:get(r,['english name','name_en','nameen','name']),gender});}
+ return {rows:valid,summary};
+}
+app.get('/api/data-stor/stats',requireUserAuth,async(req,res)=>{
+ const user=dataStorUser(req,res);if(!user)return;if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
+ try{const q=await pool.query("SELECT count(*)::int total FROM birth_records");const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1',[String(user.id)]);res.set('Cache-Control','no-store');res.json({ok:true,total:Number(q.rows[0]?.total)||0,balance:Number(b.rows[0]?.balance??user.balance)||0});}
+ catch(e){console.error('[Data Stor] stats failed:',e.message);res.status(503).json({ok:false,error:'Data Stor statistics লোড করা যায়নি।'});}
+});
+app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
+ const user=dataStorUser(req,res);if(!user)return;if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
+ const dobInput=String(req.query.dob||'').trim(),bn=String(req.query.bn||'').trim(),en=String(req.query.en||'').trim(),gender=String(req.query.gender||'all').toLowerCase();
+ if(!dobInput&&!bn&&!en)return res.status(400).json({ok:false,error:'জন্মতারিখ অথবা নাম লিখুন।'});
+ const where=[],vals=[];if(dobInput){const d=dataStorDob(dobInput);if(!d)return res.status(400).json({ok:false,error:'জন্মতারিখ সঠিক ফরম্যাটে দিন।'});vals.push(d);where.push('dob=$'+vals.length+'::date');}
+ if(bn){vals.push('%'+bn+'%');where.push('name_bn ILIKE $'+vals.length);}
+ if(en){vals.push('%'+en+'%');where.push('name_en ILIKE $'+vals.length);}
+ if(['male','female','other'].includes(gender)){if(gender==='other')where.push("lower(gender) NOT IN ('male','female')");else{vals.push(gender);where.push('lower(gender)=$'+vals.length);}}
+ const clause=where.length?' WHERE '+where.join(' AND '):'',page=Math.max(1,parseInt(req.query.page||'1',10)||1),limit=Math.max(10,Math.min(100,parseInt(req.query.limit||'30',10)||30));
+ try{const count=await pool.query('SELECT count(*)::int total FROM birth_records'+clause,vals);
+ const q=await pool.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records'+clause+' ORDER BY id LIMIT $'+(vals.length+1)+' OFFSET $'+(vals.length+2),[...vals,limit,(page-1)*limit]);
+ const ids=q.rows.map(r=>String(r.id)),unlocked=ids.length?await pool.query('SELECT record_id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=ANY($2::bigint[])',[String(user.id),ids]):{rows:[]},set=new Set(unlocked.rows.map(r=>String(r.record_id)));
+ const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1',[String(user.id)]);
+ res.set('Cache-Control','no-store');res.json({ok:true,total:Number(count.rows[0]?.total)||0,page,limit,pages:Math.ceil((Number(count.rows[0]?.total)||0)/limit),balance:Number(b.rows[0]?.balance??user.balance)||0,results:q.rows.map(r=>({id:Number(r.id),maskedBrn:dataStorMask(r.brn),unlocked:set.has(String(r.id)),price:DATA_STOR_UNLOCK_PRICE,dob:r.dob,bn:r.bn,en:r.en,gender:r.gender}))});}
+ catch(e){console.error('[Data Stor] search failed:',e.message);res.status(503).json({ok:false,error:'Search ব্যর্থ হয়েছে।'});}
+});
+app.get('/api/data-stor/records/:id',requireUserAuth,async(req,res)=>{
+ const user=dataStorUser(req,res);if(!user)return;const id=String(req.params.id||'');if(!/^[1-9]\\d{0,14}$/.test(id))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
+ if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
+ try{const q=await pool.query('SELECT b.id,b.brn,b.dob::text dob,b.name_bn bn,b.name_en en,b.gender FROM birth_records b JOIN fil_data_record_unlocks u ON u.record_id=b.id WHERE u.user_id=$1 AND b.id=$2',[String(user.id),id]);
+ if(!q.rowCount)return res.status(403).json({ok:false,error:'এই রেকর্ডটি আনলক করা নেই।'});res.set('Cache-Control','no-store');res.json({ok:true,record:q.rows[0]});}
+ catch(e){console.error('[Data Stor] record read failed:',e.message);res.status(503).json({ok:false,error:'Record load ব্যর্থ হয়েছে।'});}
+});
+app.post('/api/data-stor/records/:id/unlock',requireUserAuth,async(req,res)=>{
+ const user=dataStorUser(req,res);if(!user)return;const id=String(req.params.id||'');if(!/^[1-9]\\d{0,14}$/.test(id)||!Number.isSafeInteger(Number(id)))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
+ if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});const client=await pool.connect();
+ try{await client.query('BEGIN');const bal=await client.query('SELECT balance FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);if(!bal.rowCount){await client.query('ROLLBACK');return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});}
+ const rec=await client.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records WHERE id=$1',[id]);if(!rec.rowCount){await client.query('ROLLBACK');return res.status(404).json({ok:false,error:'Record পাওয়া যায়নি।'});}
+ const prev=await client.query('SELECT id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=$2',[String(user.id),id]),current=Number(bal.rows[0].balance)||0;
+ if(prev.rowCount){await client.query('COMMIT');return res.json({ok:true,alreadyUnlocked:true,charged:0,balance:current,record:rec.rows[0]});}
+ if(current<DATA_STOR_UNLOCK_PRICE){await client.query('ROLLBACK');return res.status(402).json({ok:false,error:'নতুন রেকর্ড আনলক করতে ৳৩০ প্রয়োজন।',balance:current,required:30});}
+ const next=Math.round((current-DATA_STOR_UNLOCK_PRICE)*100)/100,now=Date.now(),key='data-stor-record:'+id;
+ await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
+ await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),key,30,next,now]);
+ await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),user.username,'data_stor_unlock',-30,next,'Data Stor record unlock id='+id,now]);
+ await client.query('INSERT INTO fil_data_record_unlocks(user_id,record_id,price,created_at) VALUES($1,$2,$3,$4)',[String(user.id),id,30,now]);await client.query('COMMIT');user.balance=next;
+ res.set('Cache-Control','no-store');res.json({ok:true,alreadyUnlocked:false,charged:30,balance:next,record:rec.rows[0]});}
+ catch(e){await client.query('ROLLBACK').catch(()=>{});console.error('[Data Stor] unlock transaction failed:',e.message);res.status(503).json({ok:false,error:'Unlock ব্যর্থ হয়েছে; ব্যালেন্স ও রেকর্ড যাচাই করে আবার চেষ্টা করুন।'});}finally{client.release();}
+});
+app.post('/api/data-stor/admin/import',requireAdmin,async(req,res)=>{
+ if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});const csv=String(req.body?.csv||'');if(!csv.trim())return res.status(400).json({ok:false,error:'CSV content প্রয়োজন।'});
+ let parsed;try{parsed=parseDataStorCsv(csv);}catch(e){return res.status(400).json({ok:false,error:e.message});}if(!parsed.rows.length)return res.status(400).json({ok:false,error:'Valid CSV row পাওয়া যায়নি।',summary:parsed.summary});
+ const client=await pool.connect();try{await client.query('BEGIN');for(let i=0;i<parsed.rows.length;i+=500){for(const r of parsed.rows.slice(i,i+500)){const q=await client.query('INSERT INTO birth_records(brn,dob,name_bn,name_en,gender) VALUES($1,$2::date,$3,$4,$5) ON CONFLICT(brn) DO UPDATE SET dob=EXCLUDED.dob,name_bn=EXCLUDED.name_bn,name_en=EXCLUDED.name_en,gender=EXCLUDED.gender RETURNING (xmax=0) AS inserted',[r.brn,r.dob,r.bn,r.en,r.gender]);if(q.rows[0]?.inserted)parsed.summary.imported++;else parsed.summary.updated++;}}await client.query('COMMIT');res.json({ok:true,summary:parsed.summary});}
+ catch(e){await client.query('ROLLBACK').catch(()=>{});console.error('[Data Stor] import failed:',e.message);res.status(503).json({ok:false,error:'CSV import ব্যর্থ হয়েছে।',summary:parsed.summary});}finally{client.release();}
+});
 
 app.get('/api/services',requireUserAuth,(req,res)=>{
  const user=authStore.users.find(u=>String(u.id)===String(req.auth.userId));
