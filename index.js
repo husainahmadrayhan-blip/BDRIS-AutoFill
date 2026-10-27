@@ -548,9 +548,9 @@ async function initializePdfImageDatabase(client) {
     // Neon is authoritative when it already contains image records.
     const images = [];
     for (const row of result.rows) {
-      const image = {id:row.id,name:row.name,fileName:row.file_name||'',mimeType:row.mime_type||'',
+      const image = {...(row.metadata||{}),id:row.id,name:row.name,fileName:row.file_name||'',mimeType:row.mime_type||'',
         position:row.position||{},fileSize:Number(row.file_size)||0,permanent:!!row.permanent,createdAt:Number(row.created_at)||Date.now(),
-        updatedAt:Number(row.updated_at)||Date.now(),...(row.metadata||{})};
+        updatedAt:Number(row.updated_at)||Date.now()};
       if (row.image_data && image.fileName) {
         const safeName = path.basename(image.fileName);
         fs.mkdirSync(PDF_IMAGE_DIR,{recursive:true});
@@ -921,7 +921,7 @@ app.patch('/api/pdf-images/:id/position',(req,res)=>{
   if(!image)return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
   const old=image.position||{};
   const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
-  image.position={x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
+  image.position={...old,x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
   image.updatedAt=Date.now(); savePDFImageLibrary(store);
   res.json({ok:true,image:pdfImageMeta(image)});
 });
@@ -932,7 +932,7 @@ app.post('/api/pdf-images/:id/position',(req,res)=>{
   if(!image)return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
   const old=image.position||{};
   const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
-  image.position={x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
+  image.position={...old,x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
   image.updatedAt=Date.now(); savePDFImageLibrary(store);
   return res.json({ok:true,image:pdfImageMeta(image)});
 });
