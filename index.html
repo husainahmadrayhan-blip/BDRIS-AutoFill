@@ -649,7 +649,7 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 .fast-tag{display:inline-flex;align-items:center;padding:6px 12px;border-radius:999px;background:var(--service-accent,#1769e0);color:#fff;font-weight:800;font-size:12px;margin-bottom:8px}
 body.service-window-mode #premiumDashboard,body.service-window-mode #userBalanceBar{display:none!important}
 body.service-window-mode .app-head,body.service-window-mode .sub{display:none!important}
-body.service-window-mode .workspace-grid>.side-bar{transform:none!important;position:relative!important;left:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:auto!important;max-height:none!important;margin:0!important}
+body.service-pdf-image .workspace-grid>.side-bar,body.service-pdf-history .workspace-grid>.side-bar{transform:none!important;position:relative!important;left:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:auto!important;max-height:none!important;margin:0!important}
 body.service-window-mode .workspace-grid>.side-bar .history-panel,body.service-window-mode .workspace-grid>.side-bar .pdf-image-panel{display:none!important}
 body.service-pdf-image .workspace-grid>.side-bar .pdf-image-panel{display:block!important}body.service-pdf-history .workspace-grid>.side-bar .history-panel{display:block!important}
 body.service-pdf-image .form-main,body.service-pdf-history .form-main,body.service-pdf-image .bottom-preview-action,body.service-pdf-history .bottom-preview-action,body.service-pdf-image .status,body.service-pdf-history .status,body.service-pdf-image .search-fields-stack,body.service-pdf-history .search-fields-stack,body.service-pdf-image .actions.top-actions,body.service-pdf-history .actions.top-actions,body.service-pdf-image #captchaArea,body.service-pdf-history #captchaArea{display:none!important}
@@ -668,6 +668,23 @@ body.service-data-stor #appShell>*{display:none!important}
 @media(max-width:620px){#dataStorWindow{padding:12px}#dataStorWindow .ds-form{grid-template-columns:1fr}#dataStorWindow .ds-card{padding:14px}}
 body.service-transactions #premiumDashboard{display:block!important}body.service-transactions #premiumDashboard .dashboard-summary,body.service-transactions #premiumDashboard>.dashboard-heading,body.service-transactions #premiumDashboard .dashboard-service-grid,body.service-transactions #premiumDashboard .dashboard-history-grid .dashboard-panel:not(:first-child){display:none!important}body.service-transactions #premiumDashboard .dashboard-history-grid{grid-template-columns:1fr}
 @media(max-width:700px){#dashboardServices.dashboard-service-grid{grid-template-columns:1fr}#dashboardServices .dashboard-service-card{min-height:200px;padding:16px}}
+</style>
+
+<style id="fix-service-drawer-and-pdf-actions">
+/* Keep the three-dot menu as a drawer while Birth/Death forms are shown. */
+body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .workspace-grid>.side-bar{
+ position:fixed!important;left:0!important;top:0!important;bottom:0!important;
+ width:min(380px,88vw)!important;height:100vh!important;max-height:100vh!important;
+ margin:0!important;z-index:10002!important;transform:translateX(-105%)!important;
+}
+body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .workspace-grid>.side-bar.open{transform:translateX(0)!important}
+body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .side-menu-backdrop{position:fixed!important;inset:0!important;z-index:10001!important}
+.preview-download-bar .pdf-action-pair{display:flex;align-items:stretch;gap:10px;flex:0 1 auto;min-width:0}
+.preview-download-bar .pdf-action-pair>button{flex:1 1 0;min-width:0;white-space:normal}
+@media(max-width:760px){
+ body:not(.login-locked) .preview-download-bar .pdf-action-pair{display:flex!important;flex:1 1 100%!important;width:100%!important;gap:8px!important}
+ body:not(.login-locked) .preview-download-bar .pdf-action-pair>button{flex:1 1 0!important;min-width:0!important;padding:10px 5px!important;font-size:12px!important}
+}
 </style>
 </head>
 <body><div id="loginScreen"><div class="login-brand"><div class="login-brand-mark">🔒</div><div>BDRIS<small>BRT MAK</small></div></div><div class="login-grid"><section class="lamp-stage"><div class="lamp-glow"></div><div class="lamp-platform"></div><div class="walking-person" aria-hidden="true"><div class="person-head"></div><div class="person-hair"></div><div class="person-body"></div><div class="person-arm back"></div><div class="person-arm pointing"></div><div class="person-hand"></div><div class="person-leg left"></div><div class="person-leg right"></div><div class="person-shoe shoe-left"></div><div class="person-shoe shoe-right"></div></div><div class="lamp"><div class="lamp-shade"></div><div class="lamp-light"></div><div class="lamp-face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"><span class="tongue"></span></span></div><div class="lamp-pole"></div><div class="lamp-base"></div><div class="pull-rope"></div></div></section><section class="login-card"><div class="login-icon">♙</div><h2>Welcome Back</h2><div class="subtitle">Login to your account</div><form id="loginForm"><div class="login-field"><label>USERNAME</label><input id="loginUsername" autocomplete="username" placeholder="Enter your username" required><span class="field-icon">♙</span></div><div class="login-field"><label>PASSWORD</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><span class="field-icon">🔒</span></div><div class="login-options"><label class="remember"><input type="checkbox" checked> Remember me</label><span>Secure Access</span></div><button class="login-btn" id="loginBtn" type="submit">LOGIN&nbsp;&nbsp;→</button><div class="login-message" id="loginMessage"></div></form><div class="secure-note">🔐 <span>Secure</span> • <span>Private</span> • <span>Protected</span></div></section></div></div><div id="appShell"><div class="wrap">
@@ -814,7 +831,7 @@ body.service-transactions #premiumDashboard{display:block!important}body.service
     </label>
     <button type="button" class="close-preview" onclick="savePDFImagePosition()">💾 পজিশন সেভ করুন</button>
     <button type="button" class="close-preview" onclick="closeCertificatePreview()">✕ প্রিভিউ বন্ধ করুন</button>
-    <button type="button" class="close-preview" onclick="printPDF()">🖨️ Certificate Print</button><button type="button" class="download-cert" onclick="downloadPDF()">⬇️ সার্টিফিকেট ডাউনলোড</button>
+    <div class="pdf-action-pair"><button type="button" class="close-preview" onclick="printPDF()">🖨️ Certificate Print</button><button type="button" class="download-cert" onclick="downloadPDF()">⬇️ সার্টিফিকেট ডাউনলোড</button></div>
   </div>
 </div>
 </div>
@@ -874,7 +891,7 @@ function renderDataStorWindow(){
  async function search(){
   const params=new URLSearchParams({...lastQuery,page:String(page),limit:'30'});msg('অনুসন্ধান চলছে…');document.getElementById('dsResults').innerHTML='';
   try{const d=await request('/api/data-stor/search?'+params.toString());updateBalance(d.balance);document.getElementById('dsTotal').textContent='মোট রেকর্ড: '+d.total;document.getElementById('dsPage').textContent='পৃষ্ঠা '+d.page+' / '+Math.max(1,d.pages);document.getElementById('dsPrev').disabled=d.page<=1;document.getElementById('dsNext').disabled=d.page>=d.pages;
-   if(!d.results.length){msg('কোনো রেকর্ড পাওয়া যায়নি।');return;}msg(d.total+'টি রেকর্ড পাওয়া গেছে।');
+   if(!d.results.length){msg(Number(d.total)===0?'ডাটাবেসে ০টি রেকর্ড আছে। Data Stor-এর পুরোনো রেকর্ড CSV হিসেবে Import করতে হবে।':'এই তথ্যের সঙ্গে মিলে এমন কোনো রেকর্ড পাওয়া যায়নি।');return;}msg(d.total+'টি রেকর্ড পাওয়া গেছে।');
    document.getElementById('dsResults').innerHTML=d.results.map(r=>'<div class="ds-result"><div class="ds-result-head"><div><strong>'+escHtml(r.bn||'নাম নেই')+'</strong><div>'+escHtml(r.en||'')+'</div><div style="color:#5d718c;font-size:13px">DOB: '+escHtml(r.dob)+' · Gender: '+escHtml(r.gender||'')+'</div><div>BRN: <strong>'+escHtml(r.maskedBrn)+'</strong></div></div><button class="'+(r.unlocked?'ds-muted':'ds-primary')+'" type="button" onclick="dataStorUnlock('+r.id+','+r.unlocked+')">'+(r.unlocked?'দেখুন / কপি':'🔓 আনলক ৳৩০')+'</button></div></div>').join('');
   }catch(e){msg(e.message||'Search ব্যর্থ হয়েছে।');}
  }
@@ -882,7 +899,7 @@ function renderDataStorWindow(){
  document.getElementById('dsSearchForm').addEventListener('submit',e=>{e.preventDefault();page=1;lastQuery={dob:document.getElementById('dsDob').value.trim(),bn:document.getElementById('dsBn').value.trim(),en:document.getElementById('dsEn').value.trim(),gender:document.getElementById('dsGender').value};Object.keys(lastQuery).forEach(k=>{if(!lastQuery[k]||lastQuery[k]==='all')delete lastQuery[k];});search();});
  document.getElementById('dsClear').addEventListener('click',()=>{document.getElementById('dsSearchForm').reset();lastQuery={};page=1;document.getElementById('dsResults').innerHTML='';document.getElementById('dsTotal').textContent='';msg('অনুসন্ধানের জন্য জন্মতারিখ অথবা নাম লিখুন।');});
  document.getElementById('dsPrev').addEventListener('click',()=>{if(page>1){page--;search();}});document.getElementById('dsNext').addEventListener('click',()=>{page++;search();});
- request('/api/data-stor/stats').then(d=>{updateBalance(d.balance);document.getElementById('dsTotal').textContent='মোট রেকর্ড: '+d.total;}).catch(e=>msg(e.message));
+ request('/api/data-stor/stats').then(d=>{updateBalance(d.balance);const total=Number(d.total)||0;document.getElementById('dsTotal').textContent='মোট রেকর্ড: '+total;if(total===0)msg('ডাটাবেসে কোনো রেকর্ড Import করা নেই। Source Data Stor-এর CSV রেকর্ড AutoFill database-এ Import না হওয়া পর্যন্ত Search ফলাফল আসবে না।');}).catch(e=>msg('Data Stor database/stats লোড হয়নি: '+e.message));
 }
 function escHtml(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 
