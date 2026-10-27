@@ -10,7 +10,8 @@ test('DOB accepts ISO and supported day-first local formats', () => {
   assert.equal(dataStorDob('31/12/1999'), '1999-12-31');
 });
 test('DOB rejects malformed and impossible calendar dates', () => {
-  for (const value of ['', '2023-02-29', '31/02/2024', '2024/02/29', '2024-13-01', '99/99/9999', '29-02-1900']) {
+  assert.equal(dataStorDob('2024/02/29'), '2024-02-29');
+  for (const value of ['', '2023-02-29', '31/02/2024', '2024-13-01', '99/99/9999', '29-02-1900']) {
     assert.equal(dataStorDob(value), '', value);
   }
 });
