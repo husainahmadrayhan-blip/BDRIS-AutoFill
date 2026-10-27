@@ -664,7 +664,7 @@ if(changedDefaultImages) savePDFImageLibrary(pdfImageStore);
 function pdfImageMeta(x){ return {id:x.id,name:x.name,fileName:x.fileName||'',mimeType:x.mimeType||'',hasImage:!!x.fileName,position:x.position||{x:105,y:247,z:100,w:24,h:10},permanent:!!x.permanent,createdAt:x.createdAt,updatedAt:x.updatedAt}; }
 function newToken(){return crypto.randomBytes(32).toString('hex');}
 function authUser(req){const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');const session=authSessions.get(token);if(!session)return null;if(Date.now()-session.createdAt>7*24*60*60*1000){authSessions.delete(token);return null;}return session;}
-app.post('/api/auth/login',(req,res)=>{
+app.post('/api/auth/login',async(req,res)=>{
   const {username,password,accessToken,deviceId,userId,auth}=req.body||{};
   if(!username||!password||!deviceId) return res.status(400).json({ok:false,error:'Username, password এবং device তথ্য প্রয়োজন।'});
   let user=null;
