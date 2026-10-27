@@ -702,12 +702,36 @@ body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .side
 <p class="sub">জন্ম নিবন্ধন নাম্বার আর জন্ম তারিখ দিয়ে Sertifiket Mak করুন</p>
 <div id="userBalanceBar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;margin:10px 0;border:1px solid #29432a;border-radius:12px;background:#07140d;color:#dcebd7"><b>💰 Balance: <span id="userBalance">৳0</span></b><a href="https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge" target="_blank" rel="noopener" style="color:#7bea5b;text-decoration:none;font-weight:700">💬 Payment Recharge</a></div>
 
-<section id="premiumDashboard" class="premium-dashboard" aria-label="User dashboard">
-<div class="dashboard-heading"><div><span class="dashboard-eyebrow">BDRIS WORKSPACE</span><h2>আপনার ড্যাশবোর্ড</h2><p>সার্ভিস, বর্তমান রেট এবং অ্যাকাউন্ট হিস্টোরি</p></div><button type="button" class="dashboard-refresh" onclick="loadPremiumDashboard()">↻ Refresh</button></div>
-<div class="dashboard-summary"><article class="summary-card"><span class="summary-icon">৳</span><div><small>বর্তমান ব্যালেন্স</small><strong id="dashBalance">৳0.00</strong></div></article><article class="summary-card"><span class="summary-icon">↗</span><div><small>সার্ভিস</small><strong id="dashServiceCount">—</strong></div></article><article class="summary-card"><span class="summary-icon">▤</span><div><small>সাম্প্রতিক কাজ</small><strong id="dashWorkCount">—</strong></div></article></div>
-<div class="dashboard-section-head"><div><h3>সার্ভিসসমূহ</h3><p>রেট ডাটাবেসে থাকা বর্তমান user rate-এর সঙ্গে মিলবে</p></div></div><div id="dashboardServices" class="dashboard-service-grid"><div class="dashboard-loading">সার্ভিস লোড হচ্ছে…</div></div>
-<div class="dashboard-section-head"><div><h3>অ্যাকাউন্ট হিস্টোরি</h3><p>Transaction, Recharge ও সফল Download</p></div></div>
-<div class="dashboard-history-grid"><article class="dashboard-panel"><h4>ট্রানজ্যাকশন</h4><div id="dashTransactions" class="dashboard-list"><p>লোড হচ্ছে…</p></div></article><article class="dashboard-panel"><h4>রিচার্জ</h4><div id="dashRecharges" class="dashboard-list"><p>লোড হচ্ছে…</p></div><a class="dashboard-recharge-link" href="https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge" target="_blank" rel="noopener">＋ ব্যালেন্স রিচার্জ</a></article><article class="dashboard-panel"><h4>কাজের হিস্টোরি</h4><div id="dashWork" class="dashboard-list"><p>লোড হচ্ছে…</p></div></article></div><div class="dashboard-notice" id="dashboardNotice" role="status"></div></section>
+<section id="premiumDashboard" class="premium-dashboard reference-home" aria-label="User dashboard">
+ <header class="ref-topbar">
+  <button type="button" class="ref-menu-button" onclick="toggleSideMenu()" aria-label="মেনু খুলুন">☰</button>
+  <div class="ref-user">
+   <div class="ref-avatar"><span>👤</span><i></i></div>
+   <div class="ref-user-copy"><small>স্বাগতম</small><strong>মিরাজ</strong><span>আপনার প্রয়োজনীয় সেবা এক জায়গায়</span></div>
+  </div>
+  <div class="ref-balance"><span class="ref-wallet">▣</span><div><small>বর্তমান ব্যালেন্স</small><strong id="dashBalance">৳0.00</strong></div><button type="button" onclick="openPaymentRecharge()" aria-label="ব্যালেন্স যোগ করুন">＋</button></div>
+  <button type="button" class="ref-bell" onclick="openServiceWindow('transactions')" aria-label="নোটিফিকেশন">♟<i>3</i></button>
+ </header>
+ <section class="ref-hero" aria-label="সরকারি নিবন্ধন সেবা">
+  <div class="ref-hero-copy"><h2>সরকারি নিবন্ধন সেবা<br><span>এখন আরও সহজে</span></h2><p>নিরাপদ, দ্রুত এবং নির্ভরযোগ্য সেবা</p></div>
+  <div class="ref-hero-art" aria-hidden="true"><div class="ref-doc ref-doc-back"></div><div class="ref-doc ref-doc-front"><span class="ref-seal">🇧🇩</span><i></i><i></i><i></i><b>▪</b></div><span class="ref-ribbon">●</span><span class="ref-flower">✿</span></div>
+  <div class="ref-hero-dots"><i class="active"></i><i></i><i></i></div>
+ </section>
+ <div class="dashboard-section-head ref-services-heading"><div><h3>সার্ভিসসমূহ</h3><p>আপনার প্রয়োজনীয় সেবা বেছে নিন</p></div></div>
+ <div id="dashboardServices" class="dashboard-service-grid"><div class="dashboard-loading">সার্ভিস লোড হচ্ছে…</div></div>
+ <div class="ref-bottom-spacer"></div>
+ <nav class="ref-bottom-nav" aria-label="নিচের মেনু">
+  <button type="button" class="active" onclick="window.scrollTo({top:0,behavior:'smooth'})"><span>⌂</span><b>হোম</b></button>
+  <button type="button" onclick="openServiceWindow('pdf-history')"><span>▤</span><b>আমার কাজ</b></button>
+  <button type="button" class="ref-scan" onclick="openServiceWindow('birth')" aria-label="নতুন আবেদন"><span>▣</span></button>
+  <button type="button" onclick="openPaymentRecharge()"><span>▣</span><b>ব্যালেন্স</b></button>
+  <button type="button" onclick="openServiceWindow('profile')"><span>♙</span><b>প্রোফাইল</b></button>
+ </nav>
+ <div class="ref-hidden-data" aria-hidden="true">
+  <span id="dashServiceCount">5</span><span id="dashWorkCount">0</span>
+  <div id="dashTransactions"></div><div id="dashRecharges"></div><div id="dashWork"></div><div id="dashboardNotice"></div>
+ </div>
+</section>
 
 <!-- ইনপুট সেকশন -->
 <div class="search-fields-stack" style="margin-bottom:15px; background:#f4f6f8; padding:15px; border-radius:8px;">
@@ -3079,4 +3103,112 @@ body.service-pdf-image:not(.login-locked) .workspace-grid>.side-bar .pdf-image-l
 body.service-pdf-image:not(.login-locked) .workspace-grid>.side-bar .pdf-image-item{display:flex!important;visibility:visible!important}
 body.service-pdf-image:not(.login-locked) .workspace-grid>.side-bar .history-panel{display:none!important}
 @media(max-width:520px){.bottom-pdf-action-pair{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}.bottom-pdf-action-pair button{font-size:11px!important;padding:9px 4px!important;min-height:46px!important}}
+</style>
+
+<style id="reference-home-screenshot-ui">
+body:not(.service-window-mode) .app-head,body:not(.service-window-mode) .sub,body:not(.service-window-mode) #userBalanceBar{display:none!important}
+body:not(.service-window-mode) .wrap{max-width:1200px!important;margin:0 auto!important;padding:0 18px 22px!important;background:transparent!important;box-shadow:none!important;border-radius:0!important}
+body:not(.service-window-mode){background:#eaf4fc!important}
+.reference-home{position:relative!important;margin:0!important;padding:14px 0 105px!important;border:0!important;border-radius:0!important;background:transparent!important;color:#12264a!important;overflow:visible!important}
+.reference-home .ref-topbar{display:flex;align-items:center;gap:14px;margin:0 0 24px;padding:0 2px}
+.reference-home .ref-menu-button{display:flex;align-items:center;justify-content:center;flex:0 0 58px;width:58px;height:58px;border:0;border-radius:19px;background:#fff;color:#34527c;font-size:27px;box-shadow:0 8px 24px #4779ad18}
+.reference-home .ref-user{display:flex;align-items:center;gap:14px;flex:1;min-width:0}
+.reference-home .ref-avatar{position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 82px;width:82px;height:82px;border-radius:50%;background:linear-gradient(140deg,#d9ebff,#fff);border:7px solid #fff;box-shadow:0 5px 18px #5b8ac61b}
+.reference-home .ref-avatar span{display:flex;align-items:center;justify-content:center;width:60px;height:60px;border-radius:50%;background:linear-gradient(145deg,#31a7ff,#4834ef);color:#fff;font-size:37px}
+.reference-home .ref-avatar i{position:absolute;right:0;bottom:0;width:18px;height:18px;border-radius:50%;background:#10c78b;border:3px solid #fff}
+.reference-home .ref-user-copy{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+.reference-home .ref-user-copy small{font-size:14px;color:#60789b}.reference-home .ref-user-copy strong{font-size:25px;color:#12254a;font-weight:900}.reference-home .ref-user-copy span{font-size:13px;color:#617999;white-space:normal}
+.reference-home .ref-balance{display:flex;align-items:center;gap:12px;flex:0 0 auto;padding:10px 14px;border:1px solid #fff;border-radius:25px;background:#fff;box-shadow:0 8px 26px #4779ad18}
+.reference-home .ref-wallet{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:13px;background:#d9fff0;color:#08b985;font-size:29px}
+.reference-home .ref-balance>div{display:flex;flex-direction:column;min-width:95px}.reference-home .ref-balance small{font-size:13px;color:#637a9c}.reference-home .ref-balance strong{font-size:23px;line-height:1.2;color:#13264b;white-space:nowrap}
+.reference-home .ref-balance button{width:48px;height:48px;border-radius:50%;padding:0;background:linear-gradient(145deg,#12d69a,#00ae80);color:#fff;font-size:34px;font-weight:400;box-shadow:0 5px 12px #0ac18b2c}
+.reference-home .ref-bell{position:relative;flex:0 0 64px;width:64px;height:64px;border:1px solid #fff;border-radius:22px;background:#fff;color:#617a9d;font-size:28px;box-shadow:0 8px 24px #4779ad18}
+.reference-home .ref-bell i{position:absolute;right:-5px;top:-6px;width:31px;height:31px;border-radius:50%;background:#ff3155;color:#fff;font-size:15px;font-style:normal;font-weight:900;display:grid;place-items:center}
+.reference-home .ref-hero{position:relative;display:flex;align-items:center;min-height:260px;overflow:hidden;margin:0 0 28px;padding:28px 8%;border:3px solid #fff;border-radius:40px;background:radial-gradient(circle at 96% 15%,#5be5fa 0,transparent 35%),radial-gradient(circle at 3% 100%,#a6f4e2 0,transparent 30%),linear-gradient(110deg,#d4e4ff 0%,#e5f4ff 56%,#b8eafa 100%);box-shadow:0 10px 28px #3979b11c}
+.reference-home .ref-hero-copy{position:relative;z-index:2;max-width:60%}.reference-home .ref-hero-copy h2{margin:0 0 13px;font-size:clamp(25px,3.6vw,44px);font-weight:1000;line-height:1.25;color:#101f49;letter-spacing:-.5px}.reference-home .ref-hero-copy h2 span{color:#1471ef}.reference-home .ref-hero-copy p{margin:0;color:#58769c;font-size:clamp(14px,1.8vw,21px);font-weight:700}
+.reference-home .ref-hero-art{position:absolute;right:5%;top:10%;width:35%;height:83%;min-width:190px}
+.reference-home .ref-doc{position:absolute;width:58%;height:88%;top:8%;right:10%;border:2px solid #fff;border-radius:13px;background:linear-gradient(160deg,#fff,#e8f5ff);box-shadow:0 12px 24px #376da633}
+.reference-home .ref-doc-back{right:36%;top:20%;transform:rotate(-12deg);opacity:.85;background:linear-gradient(160deg,#f7f0ff,#fff)}
+.reference-home .ref-doc-front{display:flex;flex-direction:column;align-items:center;padding:9% 8%;transform:rotate(9deg)}
+.reference-home .ref-seal{display:grid;place-items:center;width:43px;height:43px;border:2px solid #06a75d;border-radius:50%;font-size:24px;margin-bottom:9%}
+.reference-home .ref-doc-front i{display:block;width:88%;height:6px;margin:4% 0;border-radius:6px;background:#9cccf9}
+.reference-home .ref-doc-front b{align-self:flex-start;margin-top:auto;width:22px;height:16px;background:#8cdbf0;border-radius:3px;color:transparent}
+.reference-home .ref-ribbon{position:absolute;right:4%;bottom:0;width:47px;height:72px;color:transparent;border-left:13px solid #101c31;border-right:13px solid #101c31;transform:rotate(35deg);opacity:.95}
+.reference-home .ref-flower{position:absolute;right:-1%;bottom:1%;font-size:42px;color:#f7c943;text-shadow:0 2px 0 #fff}
+.reference-home .ref-hero-dots{position:absolute;bottom:12px;left:50%;display:flex;gap:8px;align-items:center}
+.reference-home .ref-hero-dots i{width:12px;height:12px;border-radius:50%;background:#9db7d8}.reference-home .ref-hero-dots i.active{width:32px;border-radius:9px;background:#1268ef}
+.reference-home .ref-services-heading{margin:0 0 12px}.reference-home .ref-services-heading h3{margin:0;color:#152b50;font-size:20px;font-weight:900}.reference-home .ref-services-heading p{margin:4px 0 0;color:#6a83a4;font-size:13px}
+#dashboardServices.dashboard-service-grid{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:18px!important}
+#dashboardServices .dashboard-service-card{grid-column:span 2;position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;min-width:0;min-height:340px;padding:18px;border:2px solid #fff;border-radius:34px;background:linear-gradient(145deg,#fff,#f7fbff);box-shadow:0 12px 30px #4176ad1b}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large{grid-column:span 3;min-height:360px;padding:28px}
+#dashboardServices .dashboard-service-card>*{position:relative;z-index:2}
+#dashboardServices .dashboard-service-card:before{content:'';position:absolute;z-index:0;right:-9%;top:-13%;width:68%;height:67%;border-radius:45% 0 50% 50%;background:var(--service-glow,#e8f4ff);opacity:.85}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large:after{content:'';position:absolute;z-index:1;right:6%;top:15%;width:34%;height:58%;border:2px solid #fff;border-radius:16px;background:linear-gradient(160deg,#fff,#e9f7ff);box-shadow:0 12px 22px #345f8a26;transform:rotate(9deg)}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-service-icon{position:absolute;right:14%;top:24%;z-index:3;width:84px;height:84px;border:0;border-radius:50%;background:transparent;font-size:58px;box-shadow:none}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large h4{max-width:64%;font-size:clamp(24px,3.2vw,38px);line-height:1.22;margin:25px 0 10px;color:#10234b;font-weight:1000}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large p{max-width:60%;min-height:60px;font-size:clamp(15px,1.8vw,22px);line-height:1.5;color:#5f779a}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large .fast-tag{align-self:flex-start;padding:8px 17px;font-size:16px}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-service-footer{margin-top:auto;padding:12px 14px;border:0;border-radius:25px;background:#ffffffd9}
+#dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-rate strong{font-size:clamp(22px,2.6vw,32px)}
+#dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-service-icon{display:flex;align-items:center;justify-content:center;width:94px;height:94px;max-width:100%;margin:0 0 16px;border:6px solid #fff;border-radius:28px;background:var(--service-tint);font-size:53px;box-shadow:0 7px 18px #567ca41a}
+#dashboardServices .dashboard-service-card.dashboard-service-card-small h4{font-size:clamp(19px,2.2vw,28px);line-height:1.25;margin:0 0 8px;color:#10234b;font-weight:1000}
+#dashboardServices .dashboard-service-card.dashboard-service-card-small p{font-size:clamp(12px,1.35vw,16px);line-height:1.5;color:#60789b;min-height:52px}
+#dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-service-footer{margin-top:auto;display:flex;align-items:center;gap:7px;border-top:1px solid #ffffffad;padding-top:12px}
+#dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-rate strong{font-size:clamp(17px,1.8vw,24px)}
+#dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-open-service{min-width:40px;min-height:40px}
+.reference-home .ref-bottom-spacer{height:20px}
+.reference-home .ref-bottom-nav{position:fixed;z-index:9998;left:2%;right:2%;bottom:12px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;gap:5px;padding:8px 12px;border:2px solid #fff;border-radius:34px;background:#ffffffed;box-shadow:0 12px 35px #3b6c9e26;backdrop-filter:blur(14px)}
+.reference-home .ref-bottom-nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:0;min-height:64px;padding:5px 2px;background:transparent;color:#7185a1;font-size:12px;border:0;border-radius:22px}
+.reference-home .ref-bottom-nav button span{font-size:28px;line-height:1}.reference-home .ref-bottom-nav button b{font-size:12px;white-space:nowrap}
+.reference-home .ref-bottom-nav button.active{background:#dceeff;color:#075fe7}
+.reference-home .ref-bottom-nav button.ref-scan{width:92px;height:92px;justify-self:center;min-height:0;margin-top:-35px;border:8px solid #fff;border-radius:50%;background:linear-gradient(145deg,#087cff,#004fe0);color:#fff;box-shadow:0 7px 24px #126bf34a}
+.reference-home .ref-bottom-nav button.ref-scan span{font-size:43px}
+.reference-home .ref-hidden-data{display:none!important}
+body:not(.service-window-mode) #sideMenuTrigger{display:none!important}
+body.service-window-mode #sideMenuTrigger{display:flex!important}
+@media(max-width:760px){
+ body:not(.service-window-mode) .wrap{padding:0 12px 16px!important}
+ .reference-home{padding-top:10px!important;padding-bottom:98px!important}
+ .reference-home .ref-topbar{gap:8px;margin-bottom:16px;flex-wrap:wrap}
+ .reference-home .ref-menu-button{flex-basis:44px;width:44px;height:44px;border-radius:14px;font-size:21px}
+ .reference-home .ref-user{gap:8px;flex:1 1 150px}
+ .reference-home .ref-avatar{flex-basis:54px;width:54px;height:54px;border-width:4px}
+ .reference-home .ref-avatar span{width:42px;height:42px;font-size:25px}
+ .reference-home .ref-avatar i{width:14px;height:14px;border-width:2px}
+ .reference-home .ref-user-copy small{font-size:11px}.reference-home .ref-user-copy strong{font-size:18px}.reference-home .ref-user-copy span{font-size:10px}
+ .reference-home .ref-balance{order:3;flex:1 1 230px;gap:8px;padding:7px 9px;border-radius:18px}
+ .reference-home .ref-wallet{width:37px;height:37px;font-size:23px}
+ .reference-home .ref-balance>div{min-width:0;flex:1}.reference-home .ref-balance small{font-size:11px}.reference-home .ref-balance strong{font-size:19px}
+ .reference-home .ref-balance button{width:38px;height:38px;font-size:28px}
+ .reference-home .ref-bell{flex-basis:44px;width:44px;height:44px;border-radius:15px;font-size:21px}
+ .reference-home .ref-bell i{width:23px;height:23px;font-size:12px}
+ .reference-home .ref-hero{min-height:175px;padding:20px 5%;margin-bottom:18px;border-radius:28px}
+ .reference-home .ref-hero-copy{max-width:65%}.reference-home .ref-hero-copy h2{font-size:clamp(19px,5.5vw,27px);margin-bottom:9px}.reference-home .ref-hero-copy p{font-size:12px}
+ .reference-home .ref-hero-art{right:0;width:39%;min-width:110px;height:80%}.reference-home .ref-doc{border-radius:8px}.reference-home .ref-seal{width:28px;height:28px;font-size:16px}.reference-home .ref-ribbon{width:30px;height:45px;border-left-width:8px;border-right-width:8px}.reference-home .ref-flower{font-size:27px}
+ .reference-home .ref-hero-dots{bottom:7px}.reference-home .ref-hero-dots i{width:7px;height:7px}.reference-home .ref-hero-dots i.active{width:22px}
+ .reference-home .ref-services-heading h3{font-size:17px}
+ #dashboardServices.dashboard-service-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:8px!important}
+ #dashboardServices .dashboard-service-card{min-height:220px;padding:9px;border-radius:21px;border-width:1px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large{min-height:230px;padding:13px;grid-column:span 3}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large .fast-tag{font-size:10px;padding:5px 9px;margin-bottom:4px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large h4{font-size:clamp(16px,4.5vw,21px);max-width:70%;margin:12px 0 5px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large p{font-size:11px;max-width:67%;min-height:38px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large:after{right:4%;top:24%;width:34%;height:42%;border-radius:8px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-service-icon{right:7%;top:32%;width:45px;height:45px;font-size:32px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-service-footer{padding:7px 8px;border-radius:17px;gap:3px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-rate{font-size:10px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-rate strong{font-size:17px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-large .dashboard-open-service{min-width:30px;min-height:30px;padding:4px;font-size:16px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small{grid-column:span 2;min-height:210px;padding:9px;border-radius:20px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-service-icon{width:55px;height:55px;border-width:4px;border-radius:17px;font-size:31px;margin-bottom:10px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small h4{font-size:clamp(12px,3.4vw,15px);margin-bottom:5px;overflow-wrap:anywhere}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small p{font-size:10px;line-height:1.4;min-height:43px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-service-footer{padding-top:7px;gap:3px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-rate{font-size:9px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-rate strong{font-size:14px}
+ #dashboardServices .dashboard-service-card.dashboard-service-card-small .dashboard-open-service{min-width:27px;min-height:27px;font-size:14px;padding:3px}
+ .reference-home .ref-bottom-nav{left:2%;right:2%;bottom:7px;padding:6px 5px;border-radius:26px;gap:1px}
+ .reference-home .ref-bottom-nav button{min-height:53px;border-radius:18px}.reference-home .ref-bottom-nav button span{font-size:22px}.reference-home .ref-bottom-nav button b{font-size:10px}
+ .reference-home .ref-bottom-nav button.ref-scan{width:70px;height:70px;border-width:6px;margin-top:-25px}.reference-home .ref-bottom-nav button.ref-scan span{font-size:32px}
+}
 </style>
