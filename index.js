@@ -805,7 +805,7 @@ function parseDataStorCsv(text){
  const get=(r,names)=>{for(const n of names){const i=headers.indexOf(n.toLowerCase());if(i>=0)return String(r[i]??'').trim();}return '';};
  const valid=[],seen=new Set(),summary={imported:0,updated:0,skipped:0,invalidBrn:0,invalidDate:0,duplicates:0};
  for(const r of rows){const brn=dataStorBrn(get(r,['brn','birth registration number','birth_registration_number']));if(!brn){summary.invalidBrn++;summary.skipped++;continue;}
- if(seen.has(brn)){summary.duplicates++;continue;}seen.add(brn);const dob=dataStorDob(get(r,['dob','date of birth','জন্ম তারিখ']));if(!dob){summary.invalidDate++;summary.skipped++;continue;}
+ if(seen.has(brn)){summary.duplicates++;continue;}const dob=dataStorDob(get(r,['dob','date of birth','জন্ম তারিখ']));if(!dob){summary.invalidDate++;summary.skipped++;continue;}seen.add(brn);
  const rawGender=get(r,['gender','লিঙ্গ']).toLowerCase();const gender=['m','male','পুরুষ'].includes(rawGender)?'male':(['f','female','নারী','মহিলা'].includes(rawGender)?'female':(['o','other','অন্যান্য'].includes(rawGender)?'other':rawGender));
  valid.push({brn,dob,bn:get(r,['বাংলা নাম','name_bn','namebn','bangla name']),en:get(r,['english name','name_en','nameen','name']),gender});}
  return {rows:valid,summary};
