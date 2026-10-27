@@ -215,7 +215,7 @@ async function initializeDatabase(){
       kind text NOT NULL, note text NOT NULL DEFAULT '', created_at bigint NOT NULL)`);
     await client.query(`CREATE TABLE IF NOT EXISTS fil_images (
       id text PRIMARY KEY, name text NOT NULL, file_name text NOT NULL DEFAULT '',
-      mime_type text NOT NULL DEFAULT '', file_size bigint NOT NULL DEFAULT 0, image_data bytea, position jsonb NOT NULL DEFAULT '{}'::jsonb
+      mime_type text NOT NULL DEFAULT '', file_size bigint NOT NULL DEFAULT 0, image_data bytea, position jsonb NOT NULL DEFAULT '{}'::jsonb,
       permanent boolean NOT NULL DEFAULT false, created_at bigint NOT NULL DEFAULT 0,
       updated_at bigint NOT NULL DEFAULT 0, metadata jsonb NOT NULL DEFAULT '{}'::jsonb)`);
     // Safe, additive upgrades for databases where an earlier partial version
