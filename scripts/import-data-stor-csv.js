@@ -84,18 +84,32 @@ function normalizeBrn(s) {
   return String(s || '').trim().replace(/[\s-]/g, '');
 }
 function normalizeDob(raw) {
-  const s = String(raw || '').trim();
-  let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (m) return validDate(+m[1], +m[2], +m[3]);
-  m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (m) return validDate(+m[3], +m[2], +m[1]);
-  return null;
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  let year, month, day;
+  let m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    year = Number(m[1]); month = Number(m[2]); day = Number(m[3]);
+  } else {
+    m = value.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
+    if (!m) return null;
+    day = Number(m[1]); month = Number(m[2]); year = Number(m[3]);
+  }
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) ||
+      year < 1 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31 ||
+      dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) return null;
+  return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
 }
-function validDate(y, m, d) {
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
-  if (y < 1800 || y > new Date().getUTCFullYear()) return null;
-  return String(y).padStart(4, '0') + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+function normalizeText(raw) {
+  return String(raw || '').replace(/\s+/g, ' ').trim();
+}
+function normalizeGender(raw) {
+  const value = normalizeText(raw).toLowerCase();
+  if (value === 'male' || value === 'm') return 'male';
+  if (value === 'female' || value === 'f') return 'female';
+  if (value === 'other' || value === 'o') return 'other';
+  return value;
 }
 function fieldIndex(headers, candidates) {
   const normalized = headers.map(normalizeHeader);
@@ -183,14 +197,14 @@ async function main() {
       const brn = normalizeBrn(fields[headerMap.brn]);
       const dob = normalizeDob(fields[headerMap.dob]);
       if (!/^[0-9]{17}$/.test(brn)) { counters.invalidBRN++; counters.skipped++; continue; }
-      if (!dob) { counters.invalidDOB++; counters.skipped++; continue; }
       if (seen.has(brn)) { counters.duplicate++; counters.skipped++; continue; }
       seen.add(brn);
+      if (!dob) { counters.invalidDOB++; counters.skipped++; continue; }
       const row = {
         brn, dob,
-        name_bn: String(fields[headerMap.name_bn] || '').trim(),
-        name_en: String(fields[headerMap.name_en] || '').trim(),
-        gender: String(fields[headerMap.gender] || '').trim()
+        name_bn: normalizeText(fields[headerMap.name_bn]),
+        name_en: normalizeText(fields[headerMap.name_en]),
+        gender: normalizeGender(fields[headerMap.gender])
       };
             batch.push(row);
       if (batch.length >= batchSize) {
