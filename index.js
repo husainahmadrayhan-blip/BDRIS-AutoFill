@@ -851,6 +851,12 @@ app.post('/api/pdf-images', (req,res)=>{
   const mime=match[1].toLowerCase()==='image/jpg'?'image/jpeg':match[1].toLowerCase();
   const buffer=Buffer.from(match[2],'base64');
   if(!buffer.length || buffer.length>12*1024*1024) return res.status(400).json({ok:false,error:'Image সর্বোচ্চ 12 MB হতে পারবে।'});
+  const hasSignature = mime==='image/png'
+    ? buffer.length>=8 && buffer.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))
+    : mime==='image/jpeg'
+      ? buffer.length>=3 && buffer[0]===0xff && buffer[1]===0xd8 && buffer[2]===0xff
+      : buffer.length>=12 && buffer.toString('ascii',0,4)==='RIFF' && buffer.toString('ascii',8,12)==='WEBP';
+  if(!hasSignature) return res.status(400).json({ok:false,error:'Image file-এর content ও MIME type মিলছে না বা file corrupt।'});
   const ext=mime==='image/png'?'png':mime==='image/webp'?'webp':'jpg';
   const fileName=image.id+'.'+ext;
   for(const ext2 of ['png','jpg','webp']){ const old=path.join(PDF_IMAGE_DIR,image.id+'.'+ext2); if(old!==path.join(PDF_IMAGE_DIR,fileName)) try{fs.unlinkSync(old)}catch(_){} }
