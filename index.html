@@ -640,6 +640,12 @@ input,select,textarea,button{max-width:100%;box-sizing:border-box}
   button{padding:10px 12px}
 }
 </style>
+<style id="pdf-image-search-office-update">
+.pdf-image-search{display:block;width:100%;margin:10px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;font-size:14px}
+.pdf-image-office-match{display:flex;flex-direction:column;gap:5px;margin:8px 0 12px}
+.pdf-image-office-match button{background:#e8f3ff;color:#104a7d;border:1px solid #bfdcf6;text-align:left}
+.pdf-image-office-match small{font-size:11px;color:#64748b}
+</style>
 </head>
 <body><div id="loginScreen"><div class="login-brand"><div class="login-brand-mark">🔒</div><div>BDRIS<small>BRT MAK</small></div></div><div class="login-grid"><section class="lamp-stage"><div class="lamp-glow"></div><div class="lamp-platform"></div><div class="walking-person" aria-hidden="true"><div class="person-head"></div><div class="person-hair"></div><div class="person-body"></div><div class="person-arm back"></div><div class="person-arm pointing"></div><div class="person-hand"></div><div class="person-leg left"></div><div class="person-leg right"></div><div class="person-shoe shoe-left"></div><div class="person-shoe shoe-right"></div></div><div class="lamp"><div class="lamp-shade"></div><div class="lamp-light"></div><div class="lamp-face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"><span class="tongue"></span></span></div><div class="lamp-pole"></div><div class="lamp-base"></div><div class="pull-rope"></div></div></section><section class="login-card"><div class="login-icon">♙</div><h2>Welcome Back</h2><div class="subtitle">Login to your account</div><form id="loginForm"><div class="login-field"><label>USERNAME</label><input id="loginUsername" autocomplete="username" placeholder="Enter your username" required><span class="field-icon">♙</span></div><div class="login-field"><label>PASSWORD</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><span class="field-icon">🔒</span></div><div class="login-options"><label class="remember"><input type="checkbox" checked> Remember me</label><span>Secure Access</span></div><button class="login-btn" id="loginBtn" type="submit">LOGIN&nbsp;&nbsp;→</button><div class="login-message" id="loginMessage"></div></form><div class="secure-note">🔐 <span>Secure</span> • <span>Private</span> • <span>Protected</span></div></section></div></div><div id="appShell"><div class="wrap">
 <div class="app-head"><div class="app-brand"><img class="app-logo" src="govt-logo.png" alt="BDRIS"><div><h1>BDRIS</h1><p class="brand-en">Birt Certified Mak</p></div></div><div class="online-pill"><span></span> System Online</div></div>
@@ -750,7 +756,7 @@ input,select,textarea,button{max-width:100%;box-sizing:border-box}
     <h3>🖼 PDF Image <span id="pdfImageCount" class="badge">0</span></h3><div class="pdf-image-select-label">🖋️ সীল / Image সিলেক্ট করুন</div>
     <div class="pdf-image-add"><input id="pdfImageNameInput" type="text" placeholder="Image-এর নাম লিখুন" maxlength="120"><button type="button" onclick="addPDFImageName()">＋</button></div><button type="button" class="pdf-image-github-btn" onclick="preparePDFImagesForGitHub()">📦 Prepare for GitHub</button><div class="pdf-image-github-help">Image + saved Position/Size/Zoom একসাথে project-এর <b>pdf-images</b> folder-এর জন্য export হবে। GitHub-এ ওই folder replace করে commit করুন।</div>
     <input id="pdfImageFileInput" type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handlePDFImageUpload(event)">
-    <div id="pdfImageList" class="pdf-image-list"><div class="history-empty">Image Library লোড হচ্ছে...</div></div>
+    <input id="pdfImageSearch" type="search" class="pdf-image-search" placeholder="নাম বা অফিস দিয়ে Image খুঁজুন..." oninput="renderPDFImageLibrary()" aria-label="PDF Image search"><div class="pdf-image-office-match"><button type="button" onclick="autoSelectOfficeImage()">🏢 Registration Office অনুযায়ী Image খুঁজুন</button><small>উপরের Registration Office ফিল্ডের নাম দিয়ে মিল খোঁজা হবে।</small></div><div id="pdfImageList" class="pdf-image-list"><div class="history-empty">Image Library লোড হচ্ছে...</div></div>
     <div id="pdfImageSelected" class="pdf-image-selected">কোনো Image নির্বাচিত হয়নি।</div>
   </div>
   <div class="side-card history-panel"><h3>📚 PDF History <span id="historyCount" class="badge">0</span></h3><div id="pdfHistoryList"><div class="history-empty">এখনও কোনো PDF History নেই।</div></div></div>
@@ -1011,8 +1017,11 @@ function renderPDFImageLibrary(){
   const box=$('pdfImageList'); if(!box)return;
   $('pdfImageCount').textContent=pdfImageLibrary.length;
   if(!pdfImageLibrary.length){box.innerHTML='<div class="history-empty">কোনো PDF Image নেই।</div>';return;}
+  const searchText=String($('pdfImageSearch')?.value||'').trim().toLocaleLowerCase();
+  const visibleImages=pdfImageLibrary.filter(img=>!searchText||String(img.name||'').toLocaleLowerCase().includes(searchText));
   box.innerHTML='';
-  pdfImageLibrary.forEach(img=>{
+  if(!visibleImages.length){box.innerHTML='<div class="history-empty">এই নামে কোনো Image পাওয়া যায়নি।</div>';return;}
+  visibleImages.forEach(img=>{
     const item=document.createElement('div'); item.className='pdf-image-item'+(img.id===selectedPDFImageId?' selected':'');
     item.title=img.hasImage?'Click করে Image select করুন':'Click করে Image upload করুন';
     const visual=document.createElement(img.hasImage?'img':'div');
@@ -1028,6 +1037,22 @@ function renderPDFImageLibrary(){
   $('pdfImageSelected').textContent=selected?('✓ নির্বাচিত সিল: '+selected.name):'⚠️ আগে PDF Image থেকে একটি সিল সিলেক্ট করুন।';
   const sealToggle=$('printWithSeal');
   if(sealToggle){ sealToggle.disabled=!selected; if(!selected) sealToggle.checked=false; }
+}
+async function autoSelectOfficeImage(){
+  const office=String($('in_registrationOffice')?.value||'').trim();
+  if(!office){status('আগে Registration Office ফিল্ডে অফিসের নাম দিন।','err');return;}
+  try{
+    const response=await fetch('/api/bot/pdf-image-match?registeredOffice='+encodeURIComponent(office),{cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok||!data.ok)throw new Error(data.error||'Office Image match ব্যর্থ');
+    if(!data.matched||!data.image){status('এই অফিসের জন্য Image মেলেনি: '+office,'err');return;}
+    let image=pdfImageLibrary.find(item=>item.id===data.image.id);
+    if(!image){await loadPDFImageLibrary();image=pdfImageLibrary.find(item=>item.id===data.image.id);}
+    if(!image)throw new Error('মিল পাওয়া Image Library-তে নেই। Library refresh করুন।');
+    const search=$('pdfImageSearch');if(search)search.value='';
+    await selectPDFImage(image);
+    status('অফিস অনুযায়ী Image নির্বাচিত: '+image.name,'ok');
+  }catch(error){status('Office Image নির্বাচন ব্যর্থ: '+error.message,'err');}
 }
 async function renamePDFImage(img){
   const next=prompt('নতুন Image / সীল-এর নাম লিখুন:', img?.name||'');
