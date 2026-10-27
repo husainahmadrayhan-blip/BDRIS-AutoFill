@@ -669,6 +669,18 @@ body.service-data-stor #appShell>*{display:none!important}
 body.service-transactions #premiumDashboard{display:block!important}body.service-transactions #premiumDashboard .dashboard-summary,body.service-transactions #premiumDashboard>.dashboard-heading,body.service-transactions #premiumDashboard .dashboard-service-grid,body.service-transactions #premiumDashboard .dashboard-history-grid .dashboard-panel:not(:first-child){display:none!important}body.service-transactions #premiumDashboard .dashboard-history-grid{grid-template-columns:1fr}
 @media(max-width:700px){#dashboardServices.dashboard-service-grid{grid-template-columns:1fr}#dashboardServices .dashboard-service-card{min-height:200px;padding:16px}}
 </style>
+<style id="account-service-window-style">
+.account-service-window{position:fixed;inset:0;z-index:1000000;overflow:auto;padding:clamp(12px,3vw,28px);background:radial-gradient(circle at 8% 0,#d9eaff,transparent 32%),radial-gradient(circle at 94% 8%,#ddfff4,transparent 28%),#eef6ff;color:#152744;font-family:inherit}
+.account-service-card{max-width:760px;margin:10px auto;background:#fff;border:1px solid #dce8f6;border-radius:24px;box-shadow:0 18px 52px #17416c18;padding:clamp(18px,4vw,30px)}
+.account-service-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.account-service-head h2{margin:0;font-size:clamp(21px,3vw,28px)}.account-service-muted{color:#687d98;font-size:13px;line-height:1.65}
+.account-service-close{border:1px solid #d8e4f2;background:#fff;color:#244566;border-radius:12px;padding:9px 13px;font-weight:800;cursor:pointer}
+.account-service-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
+.account-service-field{margin:13px 0}.account-service-field label{display:block;font-size:13px;font-weight:800;margin-bottom:6px}.account-service-field input{width:100%;height:46px;border:1px solid #d4e2f0;border-radius:11px;padding:0 12px;font:inherit;background:#fbfdff}
+.account-service-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.account-service-actions button,.account-service-actions a{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:12px;padding:11px 16px;background:#1769e0;color:#fff;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}.account-service-actions .secondary{background:#edf4ff;color:#245281;border:1px solid #d7e5f5}
+.account-service-message{display:none;padding:11px 13px;border-radius:11px;margin-top:13px;font-size:13px;background:#e8faf2;color:#08724e}.account-service-message.show{display:block}.account-service-message.error{background:#fff0f2;color:#a01d3a}
+.account-service-tip{border:1px solid #dfeaf7;background:#f6faff;border-radius:14px;padding:13px 15px;margin:10px 0;line-height:1.7;font-size:14px}
+@media(max-width:560px){.account-service-grid{grid-template-columns:1fr}.account-service-head{align-items:flex-start}.account-service-card{border-radius:18px}}
+</style>
 </head>
 <body><div id="loginScreen"><div class="login-brand"><div class="login-brand-mark">🔒</div><div>BDRIS<small>BRT MAK</small></div></div><div class="login-grid"><section class="lamp-stage"><div class="lamp-glow"></div><div class="lamp-platform"></div><div class="walking-person" aria-hidden="true"><div class="person-head"></div><div class="person-hair"></div><div class="person-body"></div><div class="person-arm back"></div><div class="person-arm pointing"></div><div class="person-hand"></div><div class="person-leg left"></div><div class="person-leg right"></div><div class="person-shoe shoe-left"></div><div class="person-shoe shoe-right"></div></div><div class="lamp"><div class="lamp-shade"></div><div class="lamp-light"></div><div class="lamp-face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"><span class="tongue"></span></span></div><div class="lamp-pole"></div><div class="lamp-base"></div><div class="pull-rope"></div></div></section><section class="login-card"><div class="login-icon">♙</div><h2>Welcome Back</h2><div class="subtitle">Login to your account</div><form id="loginForm"><div class="login-field"><label>USERNAME</label><input id="loginUsername" autocomplete="username" placeholder="Enter your username" required><span class="field-icon">♙</span></div><div class="login-field"><label>PASSWORD</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><span class="field-icon">🔒</span></div><div class="login-options"><label class="remember"><input type="checkbox" checked> Remember me</label><span>Secure Access</span></div><button class="login-btn" id="loginBtn" type="submit">LOGIN&nbsp;&nbsp;→</button><div class="login-message" id="loginMessage"></div></form><div class="secure-note">🔐 <span>Secure</span> • <span>Private</span> • <span>Protected</span></div></section></div></div><div id="appShell"><div class="wrap">
 <div class="app-head"><div class="app-brand"><img class="app-logo" src="govt-logo.png" alt="BDRIS"><div><h1>BDRIS</h1><p class="brand-en">Birt Certified Mak</p></div></div><div class="online-pill"><span></span> System Online</div></div>
@@ -844,7 +856,7 @@ function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=tru
 
 
 function openServiceWindow(service){
- const allowed=new Set(['birth','death','pdf-image','pdf-history','transactions','data-stor']);
+ const allowed=new Set(['birth','death','pdf-image','pdf-history','transactions','data-stor','profile','password','how-to','contact','logout']);
  if(service==='balance'){openPaymentRecharge();return;}
  if(!allowed.has(service)){status('এই সার্ভিসটি এখনো এই অ্যাপে যুক্ত হয়নি।','err');return;}
  const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('service',service);window.open(url.toString(),'_blank');
@@ -856,9 +868,14 @@ function renderDashboardServiceCards(rate){
  {id:'birth',icon:'👶',name:'জন্ম নিবন্ধন মেইক',desc:'জন্ম নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#08a875',tint:'#d9f8ed',fast:true,meta:'সার্ভিস মূল্য',value:price},
  {id:'death',icon:'⚰️',name:'মৃত্যু নিবন্ধন মেইক',desc:'মৃত্যু নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#ef3158',tint:'#ffe4ea',fast:true,meta:'সার্ভিস মূল্য',value:price},
  {id:'data-stor',icon:'🔎',name:'Data Stor Search',desc:'জন্মতারিখ ও নাম দিয়ে BRN রেকর্ড খুঁজুন',accent:'#1769e0',tint:'#e3efff',meta:'নতুন রেকর্ড আনলক',value:'৳৩০'},
+ {id:'profile',icon:'👤',name:'My Profile',desc:'আপনার অ্যাকাউন্টের তথ্য দেখুন',accent:'#596c8a',tint:'#edf2fa',meta:'Account',value:'দেখুন'},
  {id:'pdf-image',icon:'🖼️',name:'PDF Image',desc:'সিল, স্বাক্ষর ও অফিসের Image নির্বাচন করুন',accent:'#5b42e8',tint:'#ece7ff',meta:'Office Image',value:'খুলুন'},
  {id:'pdf-history',icon:'📚',name:'PDF History',desc:'আগে তৈরি করা PDF দেখুন ও প্রিন্ট করুন',accent:'#1386da',tint:'#e0f2ff',meta:'PDF History',value:'দেখুন'},
  {id:'transactions',icon:'📄',name:'Transaction History',desc:'ব্যালেন্স ও সার্ভিস ব্যবহারের হিস্টোরি দেখুন',accent:'#1479c9',tint:'#e5f3ff',meta:'Account History',value:'দেখুন'},
+ {id:'password',icon:'🔑',name:'Change Password',desc:'লগইন পাসওয়ার্ড নিরাপদে পরিবর্তন করুন',accent:'#5b42e8',tint:'#ece7ff',meta:'Security',value:'খুলুন'},
+ {id:'how-to',icon:'❓',name:'How to Use',desc:'সার্ভিস ব্যবহারের নির্দেশনা দেখুন',accent:'#1386da',tint:'#e0f2ff',meta:'Help',value:'দেখুন'},
+ {id:'contact',icon:'☎️',name:'Contact Support',desc:'সহায়তার জন্য সাপোর্টে যোগাযোগ করুন',accent:'#0b9d88',tint:'#def9f1',meta:'Support',value:'যোগাযোগ'},
+ {id:'logout',icon:'🚪',name:'Logout',desc:'এই অ্যাকাউন্ট থেকে সাইন আউট করুন',accent:'#d8465b',tint:'#ffe9ed',meta:'Session',value:'সাইন আউট'}
  {id:'balance',icon:'💳',name:'Add Balance',desc:'অ্যাকাউন্টে ব্যালেন্স যোগ করুন',accent:'#ed7c18',tint:'#fff0d9',meta:'Balance',value:'রিচার্জ'}];
  target.innerHTML=items.map(s=>'<article class="dashboard-service-card" style="--service-accent:'+s.accent+';--service-tint:'+s.tint+'">'+(s.fast?'<span class="fast-tag">⚡ Fast</span>':'')+'<span class="dashboard-service-icon">'+s.icon+'</span><h4>'+s.name+'</h4><p>'+s.desc+'</p><div class="dashboard-service-footer"><span class="dashboard-rate">'+s.meta+'<strong>'+s.value+'</strong></span><button class="dashboard-open-service" type="button" aria-label="Open '+s.name+'" onclick="openServiceWindow(\''+s.id+'\')">→</button></div></article>').join('');
 }
@@ -886,11 +903,70 @@ function renderDataStorWindow(){
 }
 function escHtml(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 
+
+function renderAccountServiceWindow(service){
+ document.body.classList.add('service-window-mode','service-account-window-mode');
+ let root=document.getElementById('accountServiceWindow');
+ if(!root){root=document.createElement('div');root.id='accountServiceWindow';root.className='account-service-window';document.body.appendChild(root);}
+ const pages={
+  profile:{icon:'👤',title:'My Profile',subtitle:'আপনার AutoFill অ্যাকাউন্টের তথ্য'},
+  password:{icon:'🔑',title:'Change Password',subtitle:'নিরাপদভাবে বর্তমান পাসওয়ার্ড দিয়ে নতুন পাসওয়ার্ড সেট করুন'},
+  'how-to':{icon:'❓',title:'How to Use',subtitle:'সার্ভিসগুলো ব্যবহারের সংক্ষিপ্ত নির্দেশনা'},
+  contact:{icon:'☎️',title:'Contact Support',subtitle:'কোনো সমস্যা হলে সাপোর্ট টিমের সঙ্গে যোগাযোগ করুন'},
+  logout:{icon:'🚪',title:'Logout',subtitle:'সাইন আউট করলে এই browser-এর AutoFill সেশন বন্ধ হবে'}
+ };
+ const page=pages[service];if(!page){root.innerHTML='<div class="account-service-card">Service not found.</div>';return;}
+ const closeButton='<button type="button" class="account-service-close" onclick="window.close()">✕ Close</button>';
+ let content='';
+ if(service==='profile'){
+  content='<div id="accountProfile" class="account-service-tip">অ্যাকাউন্টের তথ্য লোড হচ্ছে…</div><div class="account-service-actions"><button type="button" class="secondary" onclick="openServiceWindow(\'transactions\')">📄 Transaction History</button><button type="button" class="secondary" onclick="openServiceWindow(\'password\')">🔑 Change Password</button></div>';
+ }else if(service==='password'){
+  content='<form id="accountPasswordForm"><div class="account-service-field"><label for="currentPassword">বর্তমান পাসওয়ার্ড</label><input id="currentPassword" type="password" autocomplete="current-password" required minlength="1" maxlength="128"></div><div class="account-service-field"><label for="newPassword">নতুন পাসওয়ার্ড</label><input id="newPassword" type="password" autocomplete="new-password" required minlength="8" maxlength="128"></div><div class="account-service-field"><label for="confirmNewPassword">নতুন পাসওয়ার্ড নিশ্চিত করুন</label><input id="confirmNewPassword" type="password" autocomplete="new-password" required minlength="8" maxlength="128"></div><div class="account-service-actions"><button id="changePasswordButton" type="submit">🔐 পাসওয়ার্ড পরিবর্তন করুন</button></div><div id="passwordMessage" class="account-service-message" role="status"></div></form>';
+ }else if(service==='how-to'){
+  content='<div class="account-service-tip"><strong>১. জন্ম/মৃত্যু নিবন্ধন</strong><br>মেইন পেজ থেকে Fast কার্ড খুলুন, প্রয়োজনীয় তথ্য পূরণ করুন, Certificate Preview দেখুন, তারপর Print বা Download চাপুন।</div><div class="account-service-tip"><strong>২. PDF Image ও History</strong><br>PDF Image-এ অফিসের সিল/স্বাক্ষর নির্বাচন করুন। PDF History-তে আগে সংরক্ষিত PDF দেখুন।</div><div class="account-service-tip"><strong>৩. Data Stor</strong><br>নাম বা জন্মতারিখ দিয়ে সার্চ করুন। BRN masked থাকবে; নতুন রেকর্ড আনলক করতে ৳৩০ লাগবে। আগে আনলক করা রেকর্ড আবার বিনা অতিরিক্ত চার্জে খুলবে।</div><div class="account-service-tip"><strong>৪. ব্যালেন্স ও হিস্টোরি</strong><br>Add Balance থেকে রিচার্জের জন্য সাপোর্টে যোগাযোগ করুন; Transaction History-তে লেনদেনের তথ্য দেখুন।</div>';
+ }else if(service==='contact'){
+  content='<div class="account-service-tip">রিচার্জ, লগইন বা সার্ভিস সমস্যায় নিচের বাটনে চাপ দিয়ে WhatsApp Support খুলুন। ব্যক্তিগত পাসওয়ার্ড বা সম্পূর্ণ BRN চ্যাটে পাঠাবেন না।</div><div class="account-service-actions"><a href="https://wa.me/8801331167629?text=BDRIS%20Support" target="_blank" rel="noopener noreferrer">☎️ WhatsApp Support খুলুন</a></div>';
+ }else if(service==='logout'){
+  content='<div class="account-service-tip">Logout করলে বর্তমান ব্রাউজারের লগইন টোকেন মুছে যাবে। পরে ব্যবহার করতে আবার লগইন করতে হবে।</div><div class="account-service-actions"><button type="button" onclick="logoutFromMenu()">🚪 নিশ্চিত Logout</button><button type="button" class="secondary" onclick="window.close()">বাতিল</button></div>';
+ }
+ root.innerHTML='<section class="account-service-card"><header class="account-service-head"><div><h2>'+page.icon+' '+page.title+'</h2><div class="account-service-muted">'+page.subtitle+'</div></div>'+closeButton+'</header>'+content+'</section>';
+ if(service==='profile')loadAccountProfile();
+ if(service==='password'){
+  const form=document.getElementById('accountPasswordForm');
+  form?.addEventListener('submit',async e=>{
+   e.preventDefault();const message=document.getElementById('passwordMessage'),button=document.getElementById('changePasswordButton');
+   const currentPassword=document.getElementById('currentPassword').value,newPassword=document.getElementById('newPassword').value,confirmPassword=document.getElementById('confirmNewPassword').value;
+   const notify=(text,error=false)=>{message.textContent=text;message.className='account-service-message show'+(error?' error':'');};
+   if(newPassword.length<8||newPassword.length>128)return notify('নতুন পাসওয়ার্ড ৮ থেকে ১২৮ অক্ষরের হতে হবে।',true);
+   if(newPassword!==confirmPassword)return notify('নতুন পাসওয়ার্ড দুটি মিলছে না।',true);
+   button.disabled=true;button.textContent='⏳ আপডেট হচ্ছে…';
+   try{
+    const response=await fetch('/api/auth/change-password',{method:'POST',cache:'no-store',headers:{'Authorization':'Bearer '+(localStorage.getItem(AUTH_KEY)||''),'Content-Type':'application/json','X-Device-Id':getDeviceId()},body:JSON.stringify({currentPassword,newPassword})});
+    const data=await response.json().catch(()=>({ok:false,error:'Server returned invalid response.'}));
+    if(!response.ok||!data.ok)throw new Error(data.error||'পাসওয়ার্ড পরিবর্তন করা যায়নি।');
+    form.reset();notify('পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে। অন্য সেশনগুলো সাইন আউট করা হয়েছে।');
+   }catch(error){notify(error.message,true);}
+   finally{button.disabled=false;button.textContent='🔐 পাসওয়ার্ড পরিবর্তন করুন';}
+  });
+ }
+}
+async function loadAccountProfile(){
+ const box=document.getElementById('accountProfile');if(!box)return;
+ try{
+  const response=await fetch('/api/auth/me',{headers:{'Authorization':'Bearer '+(localStorage.getItem(AUTH_KEY)||''),'X-Device-Id':getDeviceId()},cache:'no-store'});
+  const data=await response.json().catch(()=>({ok:false,error:'Invalid server response.'}));
+  if(!response.ok||!data.ok)throw new Error(data.error||'অ্যাকাউন্ট তথ্য লোড করা যায়নি।');
+  const session=data.session||{};
+  box.innerHTML='<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px"><div><small class="account-service-muted">Username</small><div><strong>'+escHtml(session.username||'—')+'</strong></div></div><div><small class="account-service-muted">নাম</small><div><strong>'+escHtml(session.name||'—')+'</strong></div></div><div><small class="account-service-muted">User ID</small><div><strong>'+escHtml(session.userId||'—')+'</strong></div></div><div><small class="account-service-muted">Session</small><div><strong>'+escHtml(session.kind||'—')+'</strong></div></div></div>';
+ }catch(error){box.textContent=error.message;}
+}
+
 function applyServiceWindowMode(){
  const service=new URLSearchParams(location.search).get('service');if(!service)return;document.body.classList.add('service-window-mode');
  if(service==='birth'||service==='death'){const dash=document.getElementById('premiumDashboard');if(dash)dash.style.display='none';setRegistrationMode(service);setTimeout(()=>document.getElementById('personalSection')?.scrollIntoView({block:'start'}),180);return;}
  if(service==='pdf-image'||service==='pdf-history'){document.body.classList.add(service==='pdf-image'?'service-pdf-image':'service-pdf-history');document.querySelector('.workspace-grid>.side-bar')?.classList.add('open');setTimeout(()=>document.querySelector(service==='pdf-image'?'.pdf-image-panel':'.history-panel')?.scrollIntoView({block:'start'}),180);return;}
  if(service==='data-stor'){renderDataStorWindow();return;}
+ if(['profile','password','how-to','contact','logout'].includes(service)){renderAccountServiceWindow(service);return;}
  if(service==='transactions'){document.body.classList.add('service-transactions');const dash=document.getElementById('premiumDashboard');if(dash)dash.style.display='block';setTimeout(()=>document.querySelector('#premiumDashboard .dashboard-history-grid')?.scrollIntoView({block:'start'}),180);}
 }
 
