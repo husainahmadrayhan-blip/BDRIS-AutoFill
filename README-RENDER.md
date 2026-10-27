@@ -13,6 +13,17 @@ This build is prepared for Render Web Service + Render PostgreSQL.
 
 The app automatically creates its PostgreSQL tables on startup when `DATABASE_URL` is present. If `DATABASE_URL` is missing (for local use), it falls back to the existing local JSON store.
 
+## Update 3–11: Image Library persistence and billing notes
+
+- The server creates the additive `fil_pdf_images` Neon table at startup when `DATABASE_URL` is configured. Image bytes, IDs, MIME types, names, timestamps and saved position metadata are stored together.
+- On first migration, the app imports the Image Library visible in its current local storage. Before deploying, sign in and use **PDF Image → Prepare for GitHub** or **Image Library → Export Permanent ZIP** to keep an independent backup of existing images and positions. The app cannot recover files that are already missing from an ephemeral disk.
+- The `fil_usage_charges` table records idempotent certificate-download charges. Preview does not debit the wallet. Download uses the existing per-user `previewRate` value; no new print price is assumed because no separate print rate is configured.
+- Image Library now has search and lazy-loaded previews, and the standalone library page has a search filter. No fixed 10-image count limit was found in the current upload API.
+- The Data Stor menu opens the existing search site. It is **not** SSO: Data Stor currently uses its own approved-user session cookie, and no documented server-to-server identity endpoint or shared authentication secret was found. Do not put Data Stor credentials in browser code.
+- SutonnyMJ and Suleman Sharif Ambad are shown as unavailable in the font selector until their real font files are supplied. No fake font files are included.
+
+The main-branch GitHub Actions workflow runs the build, regression tests and browser smoke test on each push. Check the latest run before treating a deployment as verified.
+
 ## Render deployment
 
 The included `render.yaml` provisions:
