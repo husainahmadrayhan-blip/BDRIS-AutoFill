@@ -57,3 +57,15 @@ test('async helpers that await work are declared async', () => {
     assert.match(html, new RegExp('async\\s+function\\s+' + name + '\\s*\\('), name + ' should be async');
   }
 });
+
+test('Neon metadata cannot override authoritative image columns', () => {
+  const rowMapping = server.slice(server.indexOf('const image = {...(row.metadata||{})'), server.indexOf('if (row.image_data', server.indexOf('const image = {...(row.metadata||{})')));
+  assert.ok(rowMapping.indexOf('...(row.metadata||{})') < rowMapping.indexOf('id:row.id'));
+  assert.match(rowMapping, /position:row\.position\|\|\{\}/);
+  assert.match(rowMapping, /fileSize:Number\(row\.file_size\)\|\|0/);
+});
+
+test('position updates preserve existing extra transform and alignment metadata', () => {
+  const handlers = server.match(/image\.position=\{\.\.\.old,x:n\('x',105\),y:n\('y',247\),z:n\('z',100\),w:n\('w',24\),h:n\('h',10\)\};/g) || [];
+  assert.equal(handlers.length, 2, 'PATCH and POST compatibility handlers should preserve old position metadata');
+});
