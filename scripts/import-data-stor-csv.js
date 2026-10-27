@@ -6,6 +6,28 @@ const fs = require('node:fs');
 const readline = require('node:readline');
 const { Pool } = require('pg');
 
+// Load local environment files for this standalone CLI; process environment wins.
+(function loadLocalEnv() {
+  const path = require('node:path');
+  for (const fileName of ['.env.local', '.env']) {
+    const envPath = path.resolve(process.cwd(), fileName);
+    try {
+      if (!fs.existsSync(envPath)) continue;
+      for (const line of fs.readFileSync(envPath, 'utf8').split(/\\r?\\n/)) {
+        const m = line.match(/^\\s*(?:export\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(.*?)\\s*$/);
+        if (!m || Object.prototype.hasOwnProperty.call(process.env, m[1])) continue;
+        let value = m[2];
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+        else value = value.replace(/\\s+#.*$/, '');
+        process.env[m[1]] = value;
+      }
+    } catch (error) {
+      console.error('Could not read local environment file:', fileName);
+      process.exit(1);
+    }
+  }
+})();
+
 const args = process.argv.slice(2);
 function argValue(name) {
   const exact = args.find(a => a.startsWith(name + '='));
