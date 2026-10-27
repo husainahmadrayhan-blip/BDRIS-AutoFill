@@ -25,6 +25,14 @@ test('registration-office matching calls the existing matching endpoint and sele
   assert.match(server, /app\.get\('\/api\/bot\/pdf-image-match'/);
 });
 
+test('Neon image metadata stores file size and keeps migration additive', () => {
+  assert.match(server, /file_size bigint NOT NULL DEFAULT 0/);
+  assert.match(server, /ADD COLUMN IF NOT EXISTS file_size bigint NOT NULL DEFAULT 0/);
+  assert.match(server, /file_size=EXCLUDED\.file_size/);
+  assert.match(server, /fileSize:Number\(row\.file_size\)\|\|0/);
+  assert.match(server, /image\.fileSize=buffer\.length/);
+});
+
 test('async helpers that await work are declared async', () => {
   for (const name of ['savePDFImagePosition', 'generateQRImage', 'loadPDFImageLibrary', 'selectPDFImage', 'previewPDF', 'printCertificate']) {
     assert.match(html, new RegExp('async\\s+function\\s+' + name + '\\s*\\('), name + ' should be async');
