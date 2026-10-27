@@ -636,6 +636,29 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
   body:not(.login-locked) .pdf-preview-frame iframe{width:100%!important;max-width:100%!important}
 }
 </style>
+<style id="service-window-navigation">
+#dashboardServices.dashboard-service-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#dashboardServices .dashboard-service-card{position:relative;overflow:hidden;min-height:235px;padding:20px;border-radius:22px;border:1px solid #e0ebf8;background:linear-gradient(145deg,#fff 0%,#f7fbff 100%);box-shadow:0 10px 28px rgba(28,75,130,.08)}
+#dashboardServices .dashboard-service-card:before{content:"";position:absolute;width:180px;height:180px;right:-72px;top:-88px;border-radius:50%;background:var(--service-tint,#e5efff);opacity:.85}
+#dashboardServices .dashboard-service-card>*{position:relative;z-index:1}
+#dashboardServices .dashboard-service-icon{width:66px;height:66px;border-radius:20px;background:var(--service-tint,#eaf2ff);font-size:34px;box-shadow:inset 0 0 0 5px #ffffffaa}
+#dashboardServices .dashboard-service-card h4{font-size:clamp(16px,2.1vw,21px);margin:15px 0 7px;color:#122441}
+#dashboardServices .dashboard-service-card p{font-size:13px;line-height:1.6;min-height:38px}
+#dashboardServices .dashboard-service-footer{border-top:1px dashed #d5dfec;margin-top:18px;padding-top:14px;align-items:center}
+#dashboardServices .dashboard-rate{font-size:13px;color:#71829b}
+#dashboardServices .dashboard-rate strong{display:block;font-size:16px;color:var(--service-accent,#1769e0)}
+#dashboardServices .dashboard-open-service{background:var(--service-accent,#1769e0);border-radius:999px;min-width:42px;min-height:42px;padding:8px 13px;font-size:15px;box-shadow:0 6px 14px rgba(23,105,224,.16)}
+.fast-tag{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:999px;background:var(--service-accent,#1769e0);color:#fff;font-weight:800;font-size:12px;margin-bottom:8px}
+body.service-window-mode #premiumDashboard{display:none!important}body.service-window-mode #userBalanceBar{display:none!important}
+body.service-window-mode .app-head,body.service-window-mode .sub{display:none!important}
+body.service-window-mode .workspace-grid>.side-bar{transform:translateX(0)!important;position:relative!important;left:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:auto!important;max-height:none!important;margin:0!important;border-radius:18px!important}
+body.service-window-mode .workspace-grid>.side-bar .history-panel,body.service-window-mode .workspace-grid>.side-bar .pdf-image-panel{display:none!important}
+body.service-pdf-image .workspace-grid>.side-bar .pdf-image-panel{display:block!important}body.service-pdf-history .workspace-grid>.side-bar .history-panel{display:block!important}
+body.service-pdf-image .form-main,body.service-pdf-history .form-main,body.service-pdf-image .bottom-preview-action,body.service-pdf-history .bottom-preview-action,body.service-pdf-image .status,body.service-pdf-history .status,body.service-pdf-image .search-fields-stack,body.service-pdf-history .search-fields-stack,body.service-pdf-image .actions.top-actions,body.service-pdf-history .actions.top-actions,body.service-pdf-image #captchaArea,body.service-pdf-history #captchaArea{display:none!important}
+body.service-transactions #premiumDashboard .dashboard-summary,body.service-transactions #premiumDashboard>.dashboard-heading,body.service-transactions #premiumDashboard>.dashboard-section-head:first-of-type,body.service-transactions #premiumDashboard .dashboard-service-grid,body.service-transactions #premiumDashboard .dashboard-history-grid .dashboard-panel:not(:first-child){display:none!important}
+body.service-transactions #premiumDashboard .dashboard-history-grid{grid-template-columns:1fr}
+@media(max-width:700px){#dashboardServices.dashboard-service-grid{grid-template-columns:1fr}#dashboardServices .dashboard-service-card{min-height:205px;padding:17px}body.service-window-mode .workspace-grid>.side-bar{width:100%!important}}
+</style>
 </head>
 <body><div id="loginScreen"><div class="login-brand"><div class="login-brand-mark">🔒</div><div>BDRIS<small>BRT MAK</small></div></div><div class="login-grid"><section class="lamp-stage"><div class="lamp-glow"></div><div class="lamp-platform"></div><div class="walking-person" aria-hidden="true"><div class="person-head"></div><div class="person-hair"></div><div class="person-body"></div><div class="person-arm back"></div><div class="person-arm pointing"></div><div class="person-hand"></div><div class="person-leg left"></div><div class="person-leg right"></div><div class="person-shoe shoe-left"></div><div class="person-shoe shoe-right"></div></div><div class="lamp"><div class="lamp-shade"></div><div class="lamp-light"></div><div class="lamp-face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"><span class="tongue"></span></span></div><div class="lamp-pole"></div><div class="lamp-base"></div><div class="pull-rope"></div></div></section><section class="login-card"><div class="login-icon">♙</div><h2>Welcome Back</h2><div class="subtitle">Login to your account</div><form id="loginForm"><div class="login-field"><label>USERNAME</label><input id="loginUsername" autocomplete="username" placeholder="Enter your username" required><span class="field-icon">♙</span></div><div class="login-field"><label>PASSWORD</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><span class="field-icon">🔒</span></div><div class="login-options"><label class="remember"><input type="checkbox" checked> Remember me</label><span>Secure Access</span></div><button class="login-btn" id="loginBtn" type="submit">LOGIN&nbsp;&nbsp;→</button><div class="login-message" id="loginMessage"></div></form><div class="secure-note">🔐 <span>Secure</span> • <span>Private</span> • <span>Protected</span></div></section></div></div><div id="appShell"><div class="wrap">
 <div class="app-head"><div class="app-brand"><img class="app-logo" src="govt-logo.png" alt="BDRIS"><div><h1>BDRIS</h1><p class="brand-en">Birt Certified Mak</p></div></div><div class="online-pill"><span></span> System Online</div></div>
@@ -741,14 +764,14 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 </div></main><aside class="side-bar">
   <div class="sidebar-menu-header"><button type="button" class="sidebar-menu-close" onclick="closeSideMenu()">✕</button><strong>Menu</strong></div>
   <nav class="sidebar-nav restored-menu-options">
-    <button type="button" onclick="setRegistrationMode('death')"><span class="nav-emoji">⚰️</span> মৃত্যু নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="setRegistrationMode('birth')"><span class="nav-emoji">👶</span> জন্ম নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="scrollToPdfImage()"><span class="nav-emoji">🖼</span> PDF Image <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="scrollToPdfHistory()"><span class="nav-emoji">📚</span> PDF History <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="openServiceWindow('death')"><span class="nav-emoji">⚰️</span> মৃত্যু নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="openServiceWindow('birth')"><span class="nav-emoji">👶</span> জন্ম নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="openServiceWindow('pdf-image')"><span class="nav-emoji">🖼</span> PDF Image <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="openServiceWindow('pdf-history')"><span class="nav-emoji">📚</span> PDF History <span class="nav-arrow">›</span></button>
     <button type="button" onclick="closeSideMenu();window.open('https://data-stor.vercel.app/search','_blank','noopener,noreferrer')"><span class="nav-emoji">🗂️</span> নিবন্ধন ডাটা <span class="nav-arrow">↗</span></button>
     <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('My Profile')"><span class="nav-emoji">👤</span> My Profile <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openPaymentRecharge()"><span class="nav-emoji">💳</span> Add Balance <span class="nav-arrow">›</span></button>
-    <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('Transaction History')"><span class="nav-emoji">📄</span> Transaction History <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="openServiceWindow('transactions')"><span class="nav-emoji">📄</span> Transaction History <span class="nav-arrow">›</span></button>
     <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('Change Password')"><span class="nav-emoji">🔑</span> Change Password <span class="nav-arrow">›</span></button>
     <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('How to Use')"><span class="nav-emoji">❓</span> How to Use <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openPaymentSupport()"><span class="nav-emoji">☎</span> Contact Support <span class="nav-arrow">›</span></button>
@@ -807,7 +830,47 @@ bootAuth();
 
 let currentSessionId = null;
 let userAppInitialized = false;
-function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=true;renderPDFHistory();loadPDFImageLibrary();refreshUserBalance();loadPremiumDashboard();setInterval(loadPDFImageLibrary,15000)}
+function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=true;renderPDFHistory();loadPDFImageLibrary();refreshUserBalance();renderDashboardServiceCards(0);loadPremiumDashboard();applyServiceWindowMode();setInterval(loadPDFImageLibrary,15000)}
+
+
+function openServiceWindow(service){
+  const allowed = new Set(['birth','death','pdf-image','pdf-history','transactions']);
+  if(service === 'balance'){ openPaymentRecharge(); return; }
+  if(!allowed.has(service)){ status('এই সার্ভিসটি এখনো এই অ্যাপে যুক্ত হয়নি।','err'); return; }
+  const url = new URL(location.href); url.search = ''; url.hash = ''; url.searchParams.set('service', service);
+  window.open(url.toString(), '_blank', 'noopener,noreferrer');
+}
+function renderDashboardServiceCards(rate){
+  const target = document.getElementById('dashboardServices'); if(!target) return;
+  const price = '৳' + (Number(rate)||0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const items = [
+    {id:'birth',icon:'👶',name:'জন্ম নিবন্ধন মেইক',desc:'জন্ম নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#08a875',tint:'#d9f8ed',fast:true,meta:'সফল PDF Download',value:price},
+    {id:'death',icon:'⚰️',name:'মৃত্যু নিবন্ধন মেইক',desc:'মৃত্যু নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#ef3158',tint:'#ffe4ea',fast:true,meta:'সফল PDF Download',value:price},
+    {id:'pdf-image',icon:'🖼️',name:'PDF Image',desc:'সিল, স্বাক্ষর ও অফিসের Image নির্বাচন করুন',accent:'#5b42e8',tint:'#ece7ff',meta:'Image Library',value:'খুলুন'},
+    {id:'pdf-history',icon:'📚',name:'PDF History',desc:'আগে তৈরি করা PDF দেখুন ও ডাউনলোড করুন',accent:'#1386da',tint:'#e0f2ff',meta:'Saved PDFs',value:'দেখুন'},
+    {id:'transactions',icon:'📄',name:'Transaction History',desc:'ব্যালেন্স পরিবর্তন ও ব্যবহারের হিস্টোরি দেখুন',accent:'#1479c9',tint:'#e5f3ff',meta:'Account History',value:'দেখুন'},
+    {id:'balance',icon:'💳',name:'Add Balance',desc:'অ্যাকাউন্টে ব্যালেন্স যোগ করার জন্য যোগাযোগ করুন',accent:'#ed7c18',tint:'#fff0d9',meta:'Balance',value:'রিচার্জ'}
+  ];
+  target.innerHTML = items.map(s => '<article class="dashboard-service-card" style="--service-accent:'+s.accent+';--service-tint:'+s.tint+'">'+(s.fast?'<span class="fast-tag">⚡ Fast</span>':'')+'<span class="dashboard-service-icon">'+s.icon+'</span><h4>'+s.name+'</h4><p>'+s.desc+'</p><div class="dashboard-service-footer"><span class="dashboard-rate">'+s.meta+'<strong>'+s.value+'</strong></span><button class="dashboard-open-service" type="button" aria-label="Open '+s.name+'" onclick="openServiceWindow(\''+s.id+'\')">↗</button></div></article>').join('');
+}
+function applyServiceWindowMode(){
+  const service = new URLSearchParams(location.search).get('service'); if(!service) return;
+  document.body.classList.add('service-window-mode');
+  if(service === 'birth' || service === 'death'){
+    const dash = document.getElementById('premiumDashboard'); if(dash) dash.style.display='none';
+    setRegistrationMode(service); setTimeout(()=>document.getElementById('personalSection')?.scrollIntoView({block:'start'}),180); return;
+  }
+  if(service === 'pdf-image' || service === 'pdf-history'){
+    document.body.classList.add(service === 'pdf-image' ? 'service-pdf-image' : 'service-pdf-history');
+    document.querySelector('.workspace-grid>.side-bar')?.classList.add('open');
+    setTimeout(()=>{const selector=service === 'pdf-image'?'.pdf-image-panel':'.history-panel';document.querySelector(selector)?.scrollIntoView({block:'start'});},180); return;
+  }
+  if(service === 'transactions'){
+    document.body.classList.add('service-transactions');
+    const dash=document.getElementById('premiumDashboard'); if(dash) dash.style.display='block';
+    setTimeout(()=>document.querySelector('#premiumDashboard .dashboard-history-grid')?.scrollIntoView({block:'start'}),180);
+  }
+}
 
 async function loadPremiumDashboard(){
  const notice=document.getElementById('dashboardNotice');
@@ -821,7 +884,7 @@ async function loadPremiumDashboard(){
   document.getElementById('dashBalance').textContent=fmt(balance.balance??services.balance);
   document.getElementById('dashServiceCount').textContent=String(services.services.length);
   document.getElementById('dashWorkCount').textContent=String(history.work?.length||0);
-  document.getElementById('dashboardServices').innerHTML=services.services.map(s=>'<article class="dashboard-service-card"><span class="dashboard-service-icon">'+safe(s.icon||'▣')+'</span><h4>'+safe(s.name)+'</h4><p>Preview বিনামূল্যে · সফল Download-এ চার্জ</p><div class="dashboard-service-footer"><span class="dashboard-rate">'+fmt(s.rate)+'<small>প্রতি সফল Download</small></span><button class="dashboard-open-service" type="button" onclick="document.getElementById(\'in_brn\')?.scrollIntoView({behavior:\'smooth\',block:\'center\'})">সার্ভিস খুলুন →</button></div></article>').join('');
+  renderDashboardServiceCards(services.services[0]?.rate ?? 0);
   document.getElementById('dashTransactions').innerHTML=list(history.transactions,'transaction');
   document.getElementById('dashRecharges').innerHTML=list(history.recharges,'recharge');
   document.getElementById('dashWork').innerHTML=list(history.work,'work');
