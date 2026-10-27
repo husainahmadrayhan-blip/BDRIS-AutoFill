@@ -752,6 +752,7 @@ input,select,textarea,button{max-width:100%;box-sizing:border-box}
     <button type="button" onclick="setRegistrationMode('death')"><span class="nav-emoji">⚰️</span> মৃত্যু নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
     <button type="button" onclick="setRegistrationMode('birth')"><span class="nav-emoji">👶</span> জন্ম নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
     <button type="button" onclick="scrollToPdfImage()"><span class="nav-emoji">🖼</span> PDF Image <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="openDataStorSearch()"><span class="nav-emoji">📂</span> নিবন্ধন ডাটা · Data Stor Search <span class="nav-arrow">↗</span></button>
     <button type="button" onclick="scrollToPdfHistory()"><span class="nav-emoji">📚</span> PDF History <span class="nav-arrow">›</span></button>
     <button type="button" onclick="closeSideMenu();showRestoredMenuMessage('My Profile')"><span class="nav-emoji">👤</span> My Profile <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openPaymentRecharge()"><span class="nav-emoji">💳</span> Add Balance <span class="nav-arrow">›</span></button>
@@ -996,6 +997,12 @@ function showRestoredMenuMessage(name){status(name+' option selected.','ok');}
 function openPaymentRecharge(){closeSideMenu(); window.open('https://wa.me/8801331167629?text=BDRIS%20Payment%20Recharge','_blank','noopener');}
 function openPaymentSupport(){closeSideMenu(); window.open('https://wa.me/8801331167629?text=BDRIS%20Support','_blank','noopener');}
 function logoutFromMenu(){closeSideMenu(); localStorage.removeItem(AUTH_KEY); sessionStorage.removeItem('BDRIS_ACCESS_TOKEN'); location.reload();}
+function openDataStorSearch(){
+  closeSideMenu();
+  const tab=window.open('https://data-stor.vercel.app/search','_blank');
+  if(tab){try{tab.opener=null;}catch(_){}}
+  else status('Data Stor খুলতে browser popup অনুমতি দিন।','err');
+}
 function toggleSideMenu(){
   const bar=document.querySelector('.side-bar'), back=document.getElementById('sideMenuBackdrop');
   if(!bar||!back)return;
