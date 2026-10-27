@@ -10,9 +10,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node --check index.js && node --check server.js && node --check script1.js && node --check content.js && node --check pdf-image-storage.js && node --check puppeteer-runtime.js && node registered-office-image-geo-regression.test.js && node --test pdf-image-storage.test.js fonts/font-assets.test.js && npm run test:automation",
+    "test": "node --check data-stor-utils.js && node --check index.js && node --test data-stor.test.js && node --check server.js && node --check script1.js && node --check content.js && node --check pdf-image-storage.js && node --check puppeteer-runtime.js && node registered-office-image-geo-regression.test.js && node --test pdf-image-storage.test.js fonts/font-assets.test.js && npm run test:automation",
     "start": "node server.js",
-    "build": "npm run install:browser && node --check index.js && node --check server.js && node --check script1.js && node --check content.js && node --check pdf-image-storage.js && node --check puppeteer-runtime.js && node --check automation-server/server.js && node --check automation-server/browser.js && node --check automation-server/worker.js && node --check automation-server/job-queue.js && node --check scripts/health-check.js && node --check scripts/migrate-data-stor-records.js",
+    "build": "npm run install:browser && node --check data-stor-utils.js && node --check index.js && node --check server.js && node --check script1.js && node --check content.js && node --check pdf-image-storage.js && node --check puppeteer-runtime.js && node --check automation-server/server.js && node --check automation-server/browser.js && node --check automation-server/worker.js && node --check automation-server/job-queue.js && node --check scripts/health-check.js && node --check scripts/migrate-data-stor-records.js",
     "install:browser": "puppeteer browsers install chrome",
     "test:browser": "node scripts/browser-smoke-test.cjs",
     "start:automation": "node automation-server/server.js",
