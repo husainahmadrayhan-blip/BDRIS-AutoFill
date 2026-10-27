@@ -10,7 +10,7 @@ The live source database credentials and its records are not part of either publ
 
 The repository includes a one-time script that copies the source `birth_records` into the AutoFill target `birth_records` table. It uses the existing `pg` dependency, validates 17-digit BRNs, inserts missing records by unique BRN, and does not overwrite target records already present. The source URL is used only for this migration command, not by the running app.
 
-Run in a trusted local checkout with Node dependencies installed:
+Deploy/start the updated AutoFill app once first so its additive startup migration creates the target `birth_records` table. Then run the one-time transfer in a trusted local checkout with Node dependencies installed:
 
 **PowerShell**
 ```powershell
