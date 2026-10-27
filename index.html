@@ -2637,11 +2637,14 @@ async function refreshUserBalance(){
 }
 let previewChargeInFlight = null;
 // Preview is free; balance is only charged by the server after PDF generation succeeds.
+let pendingDownloadChargeKey=null;
 async function chargeForDownload(){
-  const key=(crypto.randomUUID?crypto.randomUUID():('dl-'+Date.now()+'-'+Math.random().toString(16).slice(2)));
+  if(!pendingDownloadChargeKey)pendingDownloadChargeKey=(crypto.randomUUID?crypto.randomUUID():('dl-'+Date.now()+'-'+Math.random().toString(16).slice(2)));
+  const key=pendingDownloadChargeKey;
   const r=await fetch('/api/balance/charge-download',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify({operation:'download'})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok||!d.ok) throw new Error(d.error||'Download charge failed');
+  pendingDownloadChargeKey=null;
   persistFreshAuth(d);
   if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);
   return d;
