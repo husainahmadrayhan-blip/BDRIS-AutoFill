@@ -905,24 +905,16 @@ function openServiceWindow(service){
 }
 function renderDashboardServiceCards(rate){
  const target=document.getElementById('dashboardServices');if(!target)return;
- const price='৳'+(Number(rate)||0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const price='৳'+(Number(rate)||0).toLocaleString('en-BD',{minimumFractionDigits:0,maximumFractionDigits:2})+' টাকা';
  const items=[
-  {id:'birth',icon:'👶',name:'জন্ম নিবন্ধন মেইক',desc:'জন্ম নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#08a875',tint:'#d9f8ed',fast:true,meta:'সার্ভিস মূল্য',value:price},
-  {id:'death',icon:'⚰️',name:'মৃত্যু নিবন্ধন মেইক',desc:'মৃত্যু নিবন্ধনের সার্টিফিকেট তৈরি করুন',accent:'#ef3158',tint:'#ffe4ea',fast:true,meta:'সার্ভিস মূল্য',value:price},
-  {id:'data-stor',icon:'🔎',name:'নিবন্ধন ডাটা',desc:'জন্মতারিখ ও নাম দিয়ে BRN রেকর্ড খুঁজুন',accent:'#1769e0',tint:'#e3efff',meta:'নতুন রেকর্ড আনলক',value:'৳৩০'},
-  {id:'pdf-image',icon:'🖼️',name:'PDF Image',desc:'সিল, স্বাক্ষর ও অফিসের Image নির্বাচন করুন',accent:'#5b42e8',tint:'#ece7ff',meta:'Office Image',value:'খুলুন'},
-  {id:'pdf-history',icon:'📚',name:'PDF History',desc:'আগে তৈরি করা PDF দেখুন ও প্রিন্ট করুন',accent:'#1386da',tint:'#e0f2ff',meta:'PDF History',value:'দেখুন'},
-  {id:'profile',icon:'👤',name:'My Profile',desc:'আপনার অ্যাকাউন্টের তথ্য দেখুন',accent:'#596c8a',tint:'#edf2fa',meta:'Account',value:'দেখুন'},
-  {id:'balance',icon:'💳',name:'Add Balance',desc:'অ্যাকাউন্টে ব্যালেন্স যোগ করুন',accent:'#ed7c18',tint:'#fff0d9',meta:'Balance',value:'রিচার্জ'},
-  {id:'transactions',icon:'📄',name:'Transaction History',desc:'ব্যালেন্স ও সার্ভিস ব্যবহারের হিস্টোরি দেখুন',accent:'#1479c9',tint:'#e5f3ff',meta:'Account History',value:'দেখুন'},
-  {id:'password',icon:'🔑',name:'Change Password',desc:'লগইন পাসওয়ার্ড নিরাপদে পরিবর্তন করুন',accent:'#5b42e8',tint:'#ece7ff',meta:'Security',value:'খুলুন'},
-  {id:'how-to',icon:'❓',name:'How to Use',desc:'সার্ভিস ব্যবহারের নির্দেশনা দেখুন',accent:'#1386da',tint:'#e0f2ff',meta:'Help',value:'দেখুন'},
-  {id:'contact',icon:'☎️',name:'Contact Support',desc:'সহায়তার জন্য সাপোর্টে যোগাযোগ করুন',accent:'#0b9d88',tint:'#def9f1',meta:'Support',value:'যোগাযোগ'},
-  {id:'logout',icon:'🚪',name:'Logout',desc:'এই অ্যাকাউন্ট থেকে সাইন আউট করুন',accent:'#d8465b',tint:'#ffe9ed',meta:'Session',value:'সাইন আউট'}
+  {id:'birth',icon:'👶',name:'জন্ম নিবন্ধন',desc:'জন্ম নিবন্ধন কপি তৈরি করুন',accent:'#08a875',tint:'#d9f8ed',glow:'#baf5df',fast:true,meta:'সার্ভিস মূল্য',value:price,large:true},
+  {id:'death',icon:'⚰️',name:'মৃত্যু নিবন্ধন',desc:'মৃত্যু নিবন্ধন কপি তৈরি করুন',accent:'#ef3158',tint:'#ffe4ea',glow:'#ffc5d4',fast:true,meta:'সার্ভিস মূল্য',value:price,large:true},
+  {id:'data-stor',icon:'🗄️',name:'নিবন্ধন ডাটা',desc:'জন্ম নিবন্ধন ডাটা সংগ্রহ',accent:'#6543ed',tint:'#ece7ff',glow:'#d8caff',meta:'সার্ভিস মূল্য',value:'৳৩০',small:true},
+  {id:'pdf-history',icon:'📖',name:'কাজের হিস্টোরি',desc:'আপনার সব কাজের হিস্টোরি দেখুন',accent:'#1479e8',tint:'#e1f3ff',glow:'#d1edff',meta:'সার্ভিস মূল্য',value:'হিস্টোরি',small:true},
+  {id:'balance',icon:'💰',name:'ব্যালেন্স রিচার্জ',desc:'নিরাপদে অ্যাকাউন্ট রিচার্জ করুন',accent:'#ff7900',tint:'#fff0d9',glow:'#ffe3a9',meta:'সার্ভিস মূল্য',value:'অটো রিচার্জ',small:true}
  ];
- target.innerHTML=items.map(s=>'<article class="dashboard-service-card" style="--service-accent:'+s.accent+';--service-tint:'+s.tint+'">'+(s.fast?'<span class="fast-tag">⚡ Fast</span>':'')+'<span class="dashboard-service-icon">'+s.icon+'</span><h4>'+s.name+'</h4><p>'+s.desc+'</p><div class="dashboard-service-footer"><span class="dashboard-rate">'+s.meta+'<strong>'+s.value+'</strong></span><button class="dashboard-open-service" type="button" aria-label="Open '+s.name+'" onclick="openServiceWindow(\''+s.id+'\')">→</button></div></article>').join('');
+ target.innerHTML=items.map(s=>'<article class="dashboard-service-card '+(s.large?'dashboard-service-card-large':'dashboard-service-card-small')+'" style="--service-accent:'+s.accent+';--service-tint:'+s.tint+';--service-glow:'+s.glow+'">'+(s.fast?'<span class="fast-tag">⚡ Fast</span>':'')+'<span class="dashboard-service-icon">'+s.icon+'</span><h4>'+s.name+'</h4><p>'+s.desc+'</p><div class="dashboard-service-footer"><span class="dashboard-rate">'+s.meta+'<strong>'+s.value+'</strong></span><button class="dashboard-open-service" type="button" aria-label="Open '+s.name+'" onclick="openServiceWindow(\''+s.id+'\')">→</button></div></article>').join('');
 }
-
 function renderDataStorWindow(){
  document.body.classList.add('service-data-stor');
  let root=document.getElementById('dataStorWindow');if(!root){root=document.createElement('div');root.id='dataStorWindow';document.body.appendChild(root);}
