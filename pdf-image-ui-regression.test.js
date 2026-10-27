@@ -69,3 +69,10 @@ test('position updates preserve existing extra transform and alignment metadata'
   const handlers = server.match(/image\.position=\{\.\.\.old,x:n\('x',105\),y:n\('y',247\),z:n\('z',100\),w:n\('w',24\),h:n\('h',10\)\};/g) || [];
   assert.equal(handlers.length, 2, 'PATCH and POST compatibility handlers should preserve old position metadata');
 });
+
+test('image uploads validate actual PNG, JPEG, and WEBP file signatures', () => {
+  assert.match(server, /buffer\.subarray\(0,8\)\.equals\(Buffer\.from\(\[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a\]\)\)/);
+  assert.match(server, /buffer\[0\]===0xff && buffer\[1\]===0xd8 && buffer\[2\]===0xff/);
+  assert.match(server, /buffer\.toString\('ascii',0,4\)==='RIFF' && buffer\.toString\('ascii',8,12\)==='WEBP'/);
+  assert.match(server, /Image file-এর content ও MIME type মিলছে না/);
+});
