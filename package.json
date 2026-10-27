@@ -17,7 +17,8 @@
     "test:browser": "node scripts/browser-smoke-test.cjs",
     "start:automation": "node automation-server/server.js",
     "health-check": "node scripts/health-check.js",
-    "test:automation": "node --test automation-server/test/*.test.js"
+    "test:automation": "node --test automation-server/test/*.test.js",
+    "migrate:data-stor": "node scripts/migrate-data-stor-records.js"
   },
   "keywords": [],
   "author": "",
