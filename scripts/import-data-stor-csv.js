@@ -56,16 +56,16 @@ function parseCsvLine(line) {
   return fields;
 }
 function normalizeHeader(s) {
-  return String(s || '').replace(/^\\uFEFF/, '').trim().toLowerCase().replace(/[\\s_]+/g, '');
+  return String(s || '').replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[\s_]+/g, '');
 }
 function normalizeBrn(s) {
-  return String(s || '').trim().replace(/[\\s-]/g, '');
+  return String(s || '').trim().replace(/[\s-]/g, '');
 }
 function normalizeDob(raw) {
   const s = String(raw || '').trim();
-  let m = s.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})$/);
+  let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   if (m) return validDate(+m[1], +m[2], +m[3]);
-  m = s.match(/^(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})$/);
+  m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (m) return validDate(+m[3], +m[2], +m[1]);
   return null;
 }
@@ -94,13 +94,11 @@ async function main() {
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     let headerMap = null;
     let batch = [];
-    let lineNo = 0;
     const flush = async () => {
       if (!batch.length) return;
       if (dryRun) {
         for (const row of batch) {
-          const existing = await client.query('SELECT 1 FROM public.birth_records WHERE brn = $1 LIMIT 1', [row.brn]);
-          if (existing.rowCount) counters.updated++; else counters.inserted++;
+          if (row.wasExisting) counters.updated++; else counters.inserted++;
         }
         batch = [];
         return;
@@ -127,7 +125,6 @@ async function main() {
     };
 
     for await (const line of rl) {
-      lineNo++;
       if (!line.trim()) continue;
       const fields = parseCsvLine(line);
       if (!headerMap) {
