@@ -613,6 +613,12 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 @media (prefers-reduced-motion:reduce){body:not(.login-locked) button,body:not(.login-locked) .btn{transition:none!important}body:not(.login-locked) button::after,body:not(.login-locked) .btn::after,.ui-ripple{animation:none!important}}
 </style>
 /* Responsive safety pass: preserve certificate dimensions while preventing mobile overflow. */
+<style id="certificate-fit-page-update">
+.cert-preview{max-height:none!important;overflow:visible!important}
+.pdf-preview-workspace,.pdf-preview-frame{min-width:0;max-width:100%}
+.pdf-preview-frame iframe{aspect-ratio:210/297}
+@media(max-width:600px){.cert-preview{padding:8px}.pdf-preview-frame{padding:2px}.pdf-preview-frame iframe{height:141.4vw;max-height:1123px}}
+</style>
 <style id="responsive-safety-update">
 html,body{max-width:100%;overflow-x:hidden}
 img,iframe,video,canvas,svg{max-width:100%}
