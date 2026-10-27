@@ -216,7 +216,7 @@ async function initializeDatabase(){
     await client.query(`CREATE TABLE IF NOT EXISTS fil_images (
       id text PRIMARY KEY, name text NOT NULL, file_name text NOT NULL DEFAULT '',
       mime_type text NOT NULL DEFAULT '', file_size bigint NOT NULL DEFAULT 0, image_data bytea, position jsonb NOT NULL DEFAULT '{}'::jsonb,
-      permanent boolean NOT NULL DEFAULT false, created_at bigint NOT NULL DEFAULT 0,
+      deleted boolean NOT NULL DEFAULT false, permanent boolean NOT NULL DEFAULT false, created_at bigint NOT NULL DEFAULT 0,
       updated_at bigint NOT NULL DEFAULT 0, metadata jsonb NOT NULL DEFAULT '{}'::jsonb)`);
     // Safe, additive upgrades for databases where an earlier partial version
     // of fil_images already exists. These statements never drop existing data.
@@ -224,6 +224,7 @@ async function initializeDatabase(){
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS mime_type text NOT NULL DEFAULT \'\'');
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS image_data bytea');
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS file_size bigint NOT NULL DEFAULT 0');
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false');
     await client.query("ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS position jsonb NOT NULL DEFAULT '{}'::jsonb");
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS permanent boolean NOT NULL DEFAULT false');
     await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS created_at bigint NOT NULL DEFAULT 0');
@@ -523,7 +524,7 @@ function savePDFImageLibrary(store){
         (id,name,file_name,mime_type,file_size,image_data,position,permanent,created_at,updated_at,metadata)
         VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb)
         ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,file_name=EXCLUDED.file_name,
-        mime_type=EXCLUDED.mime_type,file_size=EXCLUDED.file_size,
+        mime_type=EXCLUDED.mime_type,file_size=EXCLUDED.file_size,deleted=false,
         image_data=CASE WHEN EXCLUDED.image_data IS NULL AND EXCLUDED.file_name<>''
           THEN fil_images.image_data ELSE EXCLUDED.image_data END,
         position=EXCLUDED.position,permanent=EXCLUDED.permanent,
@@ -534,13 +535,15 @@ function savePDFImageLibrary(store){
          JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','fileSize','position','permanent','createdAt','updatedAt'].includes(k))))]);
     }
     const ids = snapshot.map(image => String(image.id));
-    if (ids.length) await pool.query('DELETE FROM fil_images WHERE NOT (id = ANY($1::text[]))', [ids]);
-    else await pool.query('DELETE FROM fil_images');
+    // Soft-delete records missing from the active library. This avoids destructive
+    // database row deletion and keeps an audit/recovery copy of prior image bytes.
+    if (ids.length) await pool.query('UPDATE fil_images SET deleted=true WHERE NOT (id = ANY($1::text[])) AND deleted=false', [ids]);
+    else await pool.query('UPDATE fil_images SET deleted=true WHERE deleted=false');
   }).catch(error => console.error('[Neon PDF Images] Write failed:', error.message));
 }
 let pdfImageDbWriteQueue = Promise.resolve();
 async function initializePdfImageDatabase(client) {
-  const result = await client.query('SELECT * FROM fil_images ORDER BY created_at');
+  const result = await client.query('SELECT * FROM fil_images WHERE deleted=false ORDER BY created_at');
   if (result.rowCount > 0) {
     // Neon is authoritative when it already contains image records.
     const images = [];
