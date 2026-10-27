@@ -41,7 +41,7 @@ async function main() {
     try {
       await client.query('BEGIN');
       for (const row of batch.rows) {
-        if (!/^\\d{17}$/.test(String(row.brn || '')) || !row.dob) {
+        if (!/^[0-9]{17}$/.test(String(row.brn || '')) || !row.dob) {
           skipped++;
           continue;
         }
@@ -76,7 +76,7 @@ async function main() {
 main()
   .catch(error => {
     // Never print connection strings or credentials.
-    console.error('Data Stor record migration failed:', String(error?.message || error).replace(/postgres(?:ql)?:\\/\\/[^\\s]+/gi, '[database-url]'));
+    console.error('Data Stor record migration failed. Check source/target connection, schema, and database permissions.');
     process.exitCode = 1;
   })
   .finally(async () => {
