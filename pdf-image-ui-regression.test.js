@@ -18,6 +18,8 @@ test('PDF image library has search and no fixed ten-image UI cap', () => {
 
 test('registration-office matching calls the existing matching endpoint and selects the returned image', () => {
   assert.match(html, /async function autoSelectOfficeImage\(\)/);
+  assert.match(html, /id="autoSelectOfficeImage" type="checkbox"/);
+  assert.match(html, /runOfficeImageAutoSelect\(true\)/);
   assert.match(html, /\/api\/bot\/pdf-image-match\?registeredOffice=/);
   assert.match(html, /await selectPDFImage\(image\)/);
   assert.match(server, /app\.get\('\/api\/bot\/pdf-image-match'/);
