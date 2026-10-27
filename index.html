@@ -853,7 +853,7 @@ body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .side
   <label class="auto-office-image-label"><input id="autoSelectOfficeImage" type="checkbox" onchange="autoSelectRegistrarOfficeImage()"> Registrar Office অনুযায়ী Image Auto Select</label>
   <label class="print-with-seal-label"><input id="printWithSeal" type="checkbox" disabled onchange="togglePrintSeal(this.checked)"> 🖋️ সিলসহ প্রিন্ট</label>
   <div class="pdf-action-pair bottom-pdf-action-pair">
-    <button type="button" class="pdf" onclick="previewPDF()">📄 Preview</button>
+    <button type="button" class="pdf" onclick="previewPDF()">📄 Certificate Preview</button>
     <button type="button" class="close-preview" onclick="printPDF()">🖨️ Print</button>
     <button type="button" class="download-cert" onclick="downloadPDF()">⬇️ Download</button>
   </div>
@@ -3168,12 +3168,16 @@ body.service-window-mode #sideMenuTrigger{display:flex!important}
  .reference-home .ref-avatar span{width:42px;height:42px;font-size:25px}
  .reference-home .ref-avatar i{width:14px;height:14px;border-width:2px}
  .reference-home .ref-user-copy small{font-size:11px}.reference-home .ref-user-copy strong{font-size:18px}.reference-home .ref-user-copy span{font-size:10px}
- .reference-home .ref-balance{order:3;flex:1 1 230px;gap:8px;padding:7px 9px;border-radius:18px}
+ .reference-home .ref-balance{order:0;flex:0 1 230px;gap:8px;padding:7px 9px;border-radius:18px}
  .reference-home .ref-wallet{width:37px;height:37px;font-size:23px}
  .reference-home .ref-balance>div{min-width:0;flex:1}.reference-home .ref-balance small{font-size:11px}.reference-home .ref-balance strong{font-size:19px}
  .reference-home .ref-balance button{width:38px;height:38px;font-size:28px}
  .reference-home .ref-bell{flex-basis:44px;width:44px;height:44px;border-radius:15px;font-size:21px}
  .reference-home .ref-bell i{width:23px;height:23px;font-size:12px}
+}
+@media(max-width:520px){
+ .reference-home .ref-balance{order:3;flex:1 1 100%}
+
  .reference-home .ref-hero{min-height:175px;padding:20px 5%;margin-bottom:18px;border-radius:28px}
  .reference-home .ref-hero-copy{max-width:65%}.reference-home .ref-hero-copy h2{font-size:clamp(19px,5.5vw,27px);margin-bottom:9px}.reference-home .ref-hero-copy p{font-size:12px}
  .reference-home .ref-hero-art{right:0;width:39%;min-width:110px;height:80%}.reference-home .ref-doc{border-radius:8px}.reference-home .ref-seal{width:28px;height:28px;font-size:16px}.reference-home .ref-ribbon{width:30px;height:45px;border-left-width:8px;border-right-width:8px}.reference-home .ref-flower{font-size:27px}
