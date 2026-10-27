@@ -213,6 +213,19 @@ async function initializeDatabase(){
     await client.query(`CREATE TABLE IF NOT EXISTS fil_income (
       id bigserial PRIMARY KEY, user_id text NOT NULL, username text NOT NULL, amount numeric(14,2) NOT NULL,
       kind text NOT NULL, note text NOT NULL DEFAULT '', created_at bigint NOT NULL)`);
+    // Durable Image Library: metadata/positions and original image bytes live in Neon.
+    // Existing local JSON/files are imported on first startup; no destructive migration.
+    await client.query(`CREATE TABLE IF NOT EXISTS fil_pdf_images (
+      image_id text PRIMARY KEY,
+      name text NOT NULL,
+      file_name text NOT NULL DEFAULT '',
+      mime_type text NOT NULL DEFAULT '',
+      image_data bytea,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at bigint NOT NULL,
+      updated_at bigint NOT NULL
+    )`);
+    await client.query('CREATE INDEX IF NOT EXISTS idx_fil_pdf_images_name ON fil_pdf_images (lower(name))');
     const dbUsers = await client.query('SELECT * FROM fil_users ORDER BY created_at');
     if (!dbUsers.rowCount && (authStore.users||[]).length) {
       // One-time migration of existing local users to Neon on first setup.
@@ -487,7 +500,77 @@ function loadPDFImageLibrary(){
   try { return JSON.parse(fs.readFileSync(PDF_IMAGE_INDEX,'utf8')); }
   catch(_){ return {images:[]}; }
 }
-function savePDFImageLibrary(store){ fs.writeFileSync(PDF_IMAGE_INDEX, JSON.stringify(store,null,2)); }
+let pdfImagePersistQueue = Promise.resolve();
+function savePDFImageLibrary(store){
+  fs.writeFileSync(PDF_IMAGE_INDEX, JSON.stringify(store,null,2));
+  // Queue snapshots so simultaneous image/position updates cannot overwrite a newer
+  // Neon snapshot. The JSON/file store remains a local cache and offline fallback.
+  if (!pool || !dbReady) return Promise.resolve(false);
+  const snapshot = JSON.parse(JSON.stringify(store || {images:[]}));
+  pdfImagePersistQueue = pdfImagePersistQueue.then(async()=>{
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const images = Array.isArray(snapshot.images) ? snapshot.images : [];
+      const ids = images.map(x=>String(x.id));
+      for (const image of images) {
+        const fileName = path.basename(String(image.fileName || ''));
+        let bytes = null;
+        if (fileName) {
+          const filePath = path.join(PDF_IMAGE_DIR, fileName);
+          if (fs.existsSync(filePath)) bytes = fs.readFileSync(filePath);
+        }
+        await client.query(`INSERT INTO fil_pdf_images(image_id,name,file_name,mime_type,image_data,metadata,created_at,updated_at)
+          VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
+          ON CONFLICT(image_id) DO UPDATE SET name=EXCLUDED.name,file_name=EXCLUDED.file_name,
+          mime_type=EXCLUDED.mime_type,image_data=EXCLUDED.image_data,metadata=EXCLUDED.metadata,
+          created_at=EXCLUDED.created_at,updated_at=EXCLUDED.updated_at`,
+          [String(image.id),String(image.name||''),fileName,String(image.mimeType||''),bytes,
+           JSON.stringify(image),Number(image.createdAt)||Date.now(),Number(image.updatedAt)||Date.now()]);
+      }
+      if (ids.length) await client.query('DELETE FROM fil_pdf_images WHERE NOT (image_id = ANY($1::text[]))',[ids]);
+      else await client.query('DELETE FROM fil_pdf_images');
+      await client.query('COMMIT');
+      return true;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(()=>{});
+      console.error('[Neon] Image Library persistence failed:', err.message);
+      throw err;
+    } finally { client.release(); }
+  });
+  return pdfImagePersistQueue;
+}
+async function restorePDFImageLibraryFromNeon(){
+  if (!pool || !dbReady) return false;
+  const result = await pool.query('SELECT image_id,name,file_name,mime_type,image_data,metadata,created_at,updated_at FROM fil_pdf_images ORDER BY created_at');
+  const local = loadPDFImageLibrary();
+  const localImages = Array.isArray(local.images) ? local.images : [];
+  if (!result.rowCount) {
+    // First-time additive migration: preserve the existing library and its positions.
+    await savePDFImageLibrary({images:localImages});
+    console.log(`[Neon] Imported ${localImages.length} existing Image Library slot(s).`);
+    return true;
+  }
+  const restored = [];
+  for (const row of result.rows) {
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+    const image = {...metadata,id:String(row.image_id),name:String(row.name),fileName:path.basename(String(row.file_name||'')),mimeType:String(row.mime_type||''),createdAt:Number(row.created_at)||Date.now(),updatedAt:Number(row.updated_at)||Date.now()};
+    if (row.image_data && image.fileName) {
+      fs.mkdirSync(PDF_IMAGE_DIR,{recursive:true});
+      fs.writeFileSync(path.join(PDF_IMAGE_DIR,image.fileName),row.image_data);
+    }
+    restored.push(image);
+  }
+  // Keep any locally defined office slots that are not present in Neon, without
+  // replacing a database ID, saved position, image or office mapping.
+  for (const image of localImages) {
+    if (!restored.some(x=>String(x.id)===String(image.id) || String(x.name||'').trim().toLowerCase()===String(image.name||'').trim().toLowerCase())) restored.push(image);
+  }
+  fs.writeFileSync(PDF_IMAGE_INDEX,JSON.stringify({images:restored},null,2));
+  if (restored.length !== result.rowCount) await savePDFImageLibrary({images:restored});
+  console.log(`[Neon] Restored ${result.rowCount} Image Library record(s), including saved positions.`);
+  return true;
+}
 // Keep one consistent naming scheme for the PDF Image library.
 function safeImageName(name){ return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').slice(0,120); }
 // Keep one consistent naming scheme for the PDF Image library.
@@ -734,7 +817,7 @@ app.get('/api/pdf-images', (req,res)=>{
   res.json({ok:true,images:(store.images||[]).map(pdfImageMeta)});
 });
 
-app.post('/api/pdf-images', (req,res)=>{
+app.post('/api/pdf-images', async (req,res)=>{
   const {name,dataUrl}=req.body||{};
   const cleanName=safeImageName(name);
   if(!cleanName) return res.status(400).json({ok:false,error:'Image-এর নাম দিন।'});
@@ -746,7 +829,7 @@ app.post('/api/pdf-images', (req,res)=>{
     image={id:crypto.randomBytes(12).toString('hex'),name:cleanName,fileName:'',mimeType:'',createdAt:Date.now(),updatedAt:Date.now()};
     store.images.push(image);
   }
-  if(!dataUrl){ savePDFImageLibrary(store); return res.json({ok:true,image:pdfImageMeta(image),needsUpload:!image.fileName}); }
+  if(!dataUrl){ await savePDFImageLibrary(store); return res.json({ok:true,image:pdfImageMeta(image),needsUpload:!image.fileName}); }
   const match=String(dataUrl).match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i);
   if(!match) return res.status(400).json({ok:false,error:'শুধু PNG, JPG/JPEG অথবা WEBP image upload করা যাবে।'});
   const mime=match[1].toLowerCase()==='image/jpg'?'image/jpeg':match[1].toLowerCase();
@@ -757,11 +840,11 @@ app.post('/api/pdf-images', (req,res)=>{
   for(const ext2 of ['png','jpg','webp']){ const old=path.join(PDF_IMAGE_DIR,image.id+'.'+ext2); if(old!==path.join(PDF_IMAGE_DIR,fileName)) try{fs.unlinkSync(old)}catch(_){} }
   fs.writeFileSync(path.join(PDF_IMAGE_DIR,fileName),buffer);
   image.fileName=fileName; image.mimeType=mime; image.updatedAt=Date.now();
-  savePDFImageLibrary(store);
+  await savePDFImageLibrary(store);
   res.json({ok:true,image:pdfImageMeta(image)});
 });
 
-app.patch('/api/pdf-images/:id', (req,res)=>{
+app.patch('/api/pdf-images/:id', async (req,res)=>{
   const requested=safeImageName(req.body?.name);
   if(!requested) return res.status(400).json({ok:false,error:'নতুন Image-এর নাম দিন।'});
   let store=loadPDFImageLibrary();
@@ -770,7 +853,7 @@ app.patch('/api/pdf-images/:id', (req,res)=>{
   const duplicate=store.images.find(x=>x.name===requested && x.id!==image.id);
   if(duplicate) return res.status(409).json({ok:false,error:'এই নামে আরেকটি Image আগে থেকেই আছে।'});
   image.name=requested; image.updatedAt=Date.now();
-  savePDFImageLibrary(store);
+  await savePDFImageLibrary(store);
   res.json({ok:true,image:pdfImageMeta(image)});
 });
 
@@ -798,43 +881,43 @@ function ensurePermanentOfficeImageSlots(){
   for(const x of store.images||[]){
     if(PERMANENT_OFFICE_IMAGE_NAMES.some(n=>n.toLowerCase()===String(x.name||'').trim().toLowerCase()) && x.permanent!==true){x.permanent=true;changed=true;}
   }
-  if(changed)savePDFImageLibrary(store);
+  if(changed)await savePDFImageLibrary(store);
 }
 ensurePermanentOfficeImageSlots();
 
 // Delete only the uploaded binary; keep permanent office slot so it can be replaced later.
-app.delete('/api/pdf-images/:id', (req,res)=>{
+app.delete('/api/pdf-images/:id', async (req,res)=>{
   const store=loadPDFImageLibrary();
   const image=(store.images||[]).find(x=>x.id===req.params.id);
   if(!image)return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
   if(image.fileName){try{fs.unlinkSync(path.join(PDF_IMAGE_DIR,image.fileName));}catch(_){} }
   image.fileName=''; image.mimeType=''; image.updatedAt=Date.now();
   if(!image.permanent){ store.images=store.images.filter(x=>x.id!==image.id); }
-  savePDFImageLibrary(store);
+  await savePDFImageLibrary(store);
   res.json({ok:true,deleted:true,slotKept:!!image.permanent,image:image.permanent?pdfImageMeta(image):null});
 });
 
 
 // V197: local position editor + portable permanent image-library ZIP backup.
-app.patch('/api/pdf-images/:id/position',(req,res)=>{
+app.patch('/api/pdf-images/:id/position',async (req,res)=>{
   const store=loadPDFImageLibrary();
   const image=(store.images||[]).find(x=>x.id===req.params.id);
   if(!image)return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
   const old=image.position||{};
   const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
   image.position={x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
-  image.updatedAt=Date.now(); savePDFImageLibrary(store);
+  image.updatedAt=Date.now(); await savePDFImageLibrary(store);
   res.json({ok:true,image:pdfImageMeta(image)});
 });
 // V199 compatibility alias for older clients/proxies that do not preserve PATCH.
-app.post('/api/pdf-images/:id/position',(req,res)=>{
+app.post('/api/pdf-images/:id/position',async (req,res)=>{
   const store=loadPDFImageLibrary();
   const image=(store.images||[]).find(x=>x.id===req.params.id);
   if(!image)return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
   const old=image.position||{};
   const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
   image.position={x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
-  image.updatedAt=Date.now(); savePDFImageLibrary(store);
+  image.updatedAt=Date.now(); await savePDFImageLibrary(store);
   return res.json({ok:true,image:pdfImageMeta(image)});
 });
 
@@ -2405,7 +2488,7 @@ const port =
 
 
 async function startServer(){
-  try { await initializeDatabase(); }
+  try { await initializeDatabase(); await restorePDFImageLibraryFromNeon(); }
   catch(err) { console.error('[Database] DATABASE_URL is set but Neon connection/schema setup failed:',err.message); process.exitCode=1; return; }
   app.listen(port,'0.0.0.0',()=>{
     console.log(''); console.log('==========================================');
