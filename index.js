@@ -733,6 +733,22 @@ function requireDataStorUser(req,res) {
   const user=authStore.users.find(u=>String(u.id)===String(req.auth.userId)&&u.enabled!==false);
   if(!user){res.status(403).json({ok:false,error:'এই অ্যাকাউন্ট সক্রিয় নেই।'});return null;}return user;
 }
+const dataStorSearchWindows = new Map();
+function allowDataStorSearch(userId) {
+  const now = Date.now();
+  const key = String(userId);
+  const entry = dataStorSearchWindows.get(key);
+  if (!entry || now - entry.startedAt >= 60_000) {
+    dataStorSearchWindows.set(key, { startedAt: now, count: 1 });
+    if (dataStorSearchWindows.size > 5000) {
+      for (const [id, value] of dataStorSearchWindows) if (now - value.startedAt >= 60_000) dataStorSearchWindows.delete(id);
+    }
+    return true;
+  }
+  if (entry.count >= 60) return false;
+  entry.count += 1;
+  return true;
+}
 app.get('/api/data-stor/stats',requireUserAuth,async(req,res)=>{
   const user=requireDataStorUser(req,res);if(!user)return;
   if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Data Stor-এর জন্য Neon PostgreSQL সংযোগ প্রয়োজন।'});
@@ -744,6 +760,7 @@ app.get('/api/data-stor/stats',requireUserAuth,async(req,res)=>{
 });
 app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
   const user=requireDataStorUser(req,res);if(!user)return;
+  if(!allowDataStorSearch(user.id))return res.status(429).json({ok:false,error:'অনেক বেশি অনুসন্ধান হয়েছে। এক মিনিট পরে আবার চেষ্টা করুন।'});
   if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Data Stor-এর জন্য Neon PostgreSQL সংযোগ প্রয়োজন।'});
   const dobInput=String(req.query.dob||'').trim(),bn=String(req.query.bn||'').trim(),en=String(req.query.en||'').trim(),gender=String(req.query.gender||'all').toLowerCase();
   if(![dobInput,bn,en].some(Boolean))return res.status(400).json({ok:false,error:'জন্মতারিখ অথবা বাংলা/ইংরেজি নাম লিখুন।'});
