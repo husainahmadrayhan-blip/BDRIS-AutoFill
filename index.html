@@ -928,7 +928,7 @@ function renderAccountServiceWindow(service){
  }else if(service==='contact'){
   content='<div class="account-service-tip">রিচার্জ, লগইন বা সার্ভিস সমস্যায় নিচের বাটনে চাপ দিয়ে WhatsApp Support খুলুন। ব্যক্তিগত পাসওয়ার্ড বা সম্পূর্ণ BRN চ্যাটে পাঠাবেন না।</div><div class="account-service-actions"><a href="https://wa.me/8801331167629?text=BDRIS%20Support" target="_blank" rel="noopener noreferrer">☎️ WhatsApp Support খুলুন</a></div>';
  }else if(service==='logout'){
-  content='<div class="account-service-tip">Logout করলে বর্তমান ব্রাউজারের লগইন টোকেন মুছে যাবে। পরে ব্যবহার করতে আবার লগইন করতে হবে।</div><div class="account-service-actions"><button type="button" onclick="openServiceWindow('logout')">🚪 নিশ্চিত Logout</button><button type="button" class="secondary" onclick="window.close()">বাতিল</button></div>';
+  content='<div class="account-service-tip">Logout করলে বর্তমান ব্রাউজারের লগইন টোকেন মুছে যাবে। পরে ব্যবহার করতে আবার লগইন করতে হবে।</div><div class="account-service-actions"><button type="button" onclick="logoutFromMenu()">🚪 নিশ্চিত Logout</button><button type="button" class="secondary" onclick="window.close()">বাতিল</button></div>';
  }
  root.innerHTML='<section class="account-service-card"><header class="account-service-head"><div><h2>'+page.icon+' '+page.title+'</h2><div class="account-service-muted">'+page.subtitle+'</div></div>'+closeButton+'</header>'+content+'</section>';
  if(service==='profile')loadAccountProfile();
