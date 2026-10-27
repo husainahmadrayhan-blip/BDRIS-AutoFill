@@ -641,6 +641,9 @@ input,select,textarea,button{max-width:100%;box-sizing:border-box}
 }
 </style>
 <style id="pdf-image-search-office-update">
+.office-auto-toggle{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:12px;font-weight:600;color:#174b76}
+.office-auto-toggle input{width:auto;margin:0;flex:0 0 auto}
+
 .pdf-image-search{display:block;width:100%;margin:10px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;font-size:14px}
 .pdf-image-office-match{display:flex;flex-direction:column;gap:5px;margin:8px 0 12px}
 .pdf-image-office-match button{background:#e8f3ff;color:#104a7d;border:1px solid #bfdcf6;text-align:left}
@@ -767,7 +770,7 @@ input,select,textarea,button{max-width:100%;box-sizing:border-box}
 
 <!-- Certificate Preview -->
 <div id="certPreview" class="cert-preview" style="display:none">
-  <div class="preview-head"><div><h3>Certificate Preview</h3><small>PDF Preview-তে Image-টি ধরে Adobe-এর মতো Move / Resize করুন, তারপর Download করুন</small></div><span class="preview-live">● LIVE</span></div>
+  <div class="preview-head"><div><h3>Certificate Preview</h3><small>PDF Preview-তে Image-টি ধরে Adobe-এর মতো Move / Resize করুন, তারপর Download করুন</small><label class="office-auto-toggle"><input id="autoSelectOfficeImage" type="checkbox"> 🏢 Registrar Office অনুযায়ী Image Auto Select</label></div><span class="preview-live">● LIVE</span></div>
   <div class="pdf-preview-workspace">
     <div class="pdf-preview-frame"><iframe id="certIframe"></iframe></div>
     <div id="pdfImageAdjust" class="pdf-image-adjust" style="display:none"></div>
@@ -806,7 +809,11 @@ bootAuth();
 
 let currentSessionId = null;
 let userAppInitialized = false;
-function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=true;renderPDFHistory();loadPDFImageLibrary();refreshUserBalance();setInterval(loadPDFImageLibrary,15000)}
+function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=true;const officeAutoCheckbox=$('autoSelectOfficeImage');
+if(officeAutoCheckbox)officeAutoCheckbox.addEventListener('change',()=>{if(officeAutoCheckbox.checked)runOfficeImageAutoSelect(true);});
+const registrationOfficeInput=$('in_registrationOffice');
+if(registrationOfficeInput)registrationOfficeInput.addEventListener('change',()=>runOfficeImageAutoSelect(true));
+renderPDFHistory();loadPDFImageLibrary();refreshUserBalance();setInterval(loadPDFImageLibrary,15000)}
 let mathCaptchaA = 0, mathCaptchaB = 0, mathCaptchaOp = '+';
 let mathCaptchaSolved = false;
 let currentData = null;
@@ -887,6 +894,16 @@ function applySavedPDFImagePosition(id){
   return true;
 }
 
+let lastAutoSelectedOffice='';
+async function runOfficeImageAutoSelect(force=false){
+  const checkbox=$('autoSelectOfficeImage');
+  if(!checkbox?.checked)return;
+  const office=String($('in_registrationOffice')?.value||'').trim();
+  if(!office){status('Registrar Office পাওয়া যায়নি। Manual Image নির্বাচন করুন।','err');return;}
+  if(!force&&office.toLocaleLowerCase()===lastAutoSelectedOffice.toLocaleLowerCase())return;
+  lastAutoSelectedOffice=office;
+  await autoSelectOfficeImage();
+}
 function updatePDFImageAdjustUI(){
   const panel=$('pdfImageAdjust');
   if(panel) panel.style.display = selectedPDFImageDataUrl ? 'none' : 'none';
