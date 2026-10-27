@@ -548,6 +548,13 @@ function savePDFImageLibrary(store){
   });
   return pdfImagePersistQueue;
 }
+async function savePDFImageLibraryForResponse(store,res){
+  try { await savePDFImageLibrary(store); return true; }
+  catch (_) {
+    if (!res.headersSent) res.status(503).json({ok:false,error:'Neon Image Library save failed. Local cache updated; check DATABASE_URL/Neon connection and retry.'});
+    return false;
+  }
+}
 async function restorePDFImageLibraryFromNeon(){
   if (!pool || !dbReady) return false;
   const result = await pool.query('SELECT image_id,name,file_name,mime_type,image_data,metadata,created_at,updated_at FROM fil_pdf_images ORDER BY created_at');
@@ -880,7 +887,7 @@ app.post('/api/pdf-images', async (req,res)=>{
     image={id:crypto.randomBytes(12).toString('hex'),name:cleanName,fileName:'',mimeType:'',createdAt:Date.now(),updatedAt:Date.now()};
     store.images.push(image);
   }
-  if(!dataUrl){ await savePDFImageLibrary(store); return res.json({ok:true,image:pdfImageMeta(image),needsUpload:!image.fileName}); }
+  if(!dataUrl){ if(!await savePDFImageLibraryForResponse(store,res))return; return res.json({ok:true,image:pdfImageMeta(image),needsUpload:!image.fileName}); }
   const match=String(dataUrl).match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i);
   if(!match) return res.status(400).json({ok:false,error:'শুধু PNG, JPG/JPEG অথবা WEBP image upload করা যাবে।'});
   const mime=match[1].toLowerCase()==='image/jpg'?'image/jpeg':match[1].toLowerCase();
@@ -891,7 +898,7 @@ app.post('/api/pdf-images', async (req,res)=>{
   for(const ext2 of ['png','jpg','webp']){ const old=path.join(PDF_IMAGE_DIR,image.id+'.'+ext2); if(old!==path.join(PDF_IMAGE_DIR,fileName)) try{fs.unlinkSync(old)}catch(_){} }
   fs.writeFileSync(path.join(PDF_IMAGE_DIR,fileName),buffer);
   image.fileName=fileName; image.mimeType=mime; image.updatedAt=Date.now();
-  await savePDFImageLibrary(store);
+  if(!await savePDFImageLibraryForResponse(store,res))return;
   res.json({ok:true,image:pdfImageMeta(image)});
 });
 
@@ -904,7 +911,7 @@ app.patch('/api/pdf-images/:id', async (req,res)=>{
   const duplicate=store.images.find(x=>x.name===requested && x.id!==image.id);
   if(duplicate) return res.status(409).json({ok:false,error:'এই নামে আরেকটি Image আগে থেকেই আছে।'});
   image.name=requested; image.updatedAt=Date.now();
-  await savePDFImageLibrary(store);
+  if(!await savePDFImageLibraryForResponse(store,res))return;
   res.json({ok:true,image:pdfImageMeta(image)});
 });
 
@@ -944,7 +951,7 @@ app.delete('/api/pdf-images/:id', async (req,res)=>{
   if(image.fileName){try{fs.unlinkSync(path.join(PDF_IMAGE_DIR,image.fileName));}catch(_){} }
   image.fileName=''; image.mimeType=''; image.updatedAt=Date.now();
   if(!image.permanent){ store.images=store.images.filter(x=>x.id!==image.id); }
-  await savePDFImageLibrary(store);
+  if(!await savePDFImageLibraryForResponse(store,res))return;
   res.json({ok:true,deleted:true,slotKept:!!image.permanent,image:image.permanent?pdfImageMeta(image):null});
 });
 
@@ -957,7 +964,7 @@ app.patch('/api/pdf-images/:id/position',async (req,res)=>{
   const old=image.position||{};
   const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
   image.position={x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
-  image.updatedAt=Date.now(); await savePDFImageLibrary(store);
+  image.updatedAt=Date.now(); if(!await savePDFImageLibraryForResponse(store,res))return;
   res.json({ok:true,image:pdfImageMeta(image)});
 });
 // V199 compatibility alias for older clients/proxies that do not preserve PATCH.
@@ -968,7 +975,7 @@ app.post('/api/pdf-images/:id/position',async (req,res)=>{
   const old=image.position||{};
   const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
   image.position={x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
-  image.updatedAt=Date.now(); await savePDFImageLibrary(store);
+  image.updatedAt=Date.now(); if(!await savePDFImageLibraryForResponse(store,res))return;
   return res.json({ok:true,image:pdfImageMeta(image)});
 });
 
