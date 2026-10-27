@@ -218,6 +218,16 @@ async function initializeDatabase(){
       mime_type text NOT NULL DEFAULT '', image_data bytea, position jsonb NOT NULL DEFAULT '{}'::jsonb,
       permanent boolean NOT NULL DEFAULT false, created_at bigint NOT NULL DEFAULT 0,
       updated_at bigint NOT NULL DEFAULT 0, metadata jsonb NOT NULL DEFAULT '{}'::jsonb)`);
+    // Safe, additive upgrades for databases where an earlier partial version
+    // of fil_images already exists. These statements never drop existing data.
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS file_name text NOT NULL DEFAULT \'\'');
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS mime_type text NOT NULL DEFAULT \'\'');
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS image_data bytea');
+    await client.query("ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS position jsonb NOT NULL DEFAULT '{}'::jsonb");
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS permanent boolean NOT NULL DEFAULT false');
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS created_at bigint NOT NULL DEFAULT 0');
+    await client.query('ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS updated_at bigint NOT NULL DEFAULT 0');
+    await client.query("ALTER TABLE fil_images ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb");
     await client.query('CREATE INDEX IF NOT EXISTS fil_images_name_lower_idx ON fil_images (lower(name))');
     await initializePdfImageDatabase(client);
     const dbUsers = await client.query('SELECT * FROM fil_users ORDER BY created_at');
