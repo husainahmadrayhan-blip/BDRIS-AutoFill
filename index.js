@@ -722,6 +722,13 @@ app.post('/api/automation/jobs/:id/cancel',requireUserAuth,(req,res)=>forwardAut
 
 
 const DATA_STOR_UNLOCK_PRICE=30;
+const dataStorRateBuckets=new Map();
+function allowDataStorAction(userId,action,maxCount=60){
+ const key=String(userId)+':'+action,now=Date.now();let item=dataStorRateBuckets.get(key);
+ if(!item||now-item.startedAt>=60000){item={startedAt:now,count:0};dataStorRateBuckets.set(key,item);}
+ item.count++;if(dataStorRateBuckets.size>5000){for(const [k,v] of dataStorRateBuckets)if(now-v.startedAt>120000)dataStorRateBuckets.delete(k);}
+ return item.count<=maxCount;
+}
 function dataStorDob(value){
  const p=String(value||'').trim().split(/[\\/-]/).map(Number);if(p.length!==3||p.some(n=>!Number.isInteger(n)))return '';
  let y,m,d;if(p[0]>=1000)[y,m,d]=p;else[d,m,y]=p;
@@ -758,7 +765,7 @@ app.get('/api/data-stor/stats',requireUserAuth,async(req,res)=>{
  catch(e){console.error('[Data Stor] stats failed:',e.message);res.status(503).json({ok:false,error:'Data Stor statistics লোড করা যায়নি।'});}
 });
 app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
- const user=dataStorUser(req,res);if(!user)return;if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
+ const user=dataStorUser(req,res);if(!user)return;if(!allowDataStorAction(user.id,'search',60))return res.status(429).json({ok:false,error:'অনেক বেশি search করা হয়েছে। এক মিনিট পরে চেষ্টা করুন।'});if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
  const dobInput=String(req.query.dob||'').trim(),bn=String(req.query.bn||'').trim(),en=String(req.query.en||'').trim(),gender=String(req.query.gender||'all').toLowerCase();
  if(!dobInput&&!bn&&!en)return res.status(400).json({ok:false,error:'জন্মতারিখ অথবা নাম লিখুন।'});
  const where=[],vals=[];if(dobInput){const d=dataStorDob(dobInput);if(!d)return res.status(400).json({ok:false,error:'জন্মতারিখ সঠিক ফরম্যাটে দিন।'});vals.push(d);where.push('dob=$'+vals.length+'::date');}
@@ -781,12 +788,12 @@ app.get('/api/data-stor/records/:id',requireUserAuth,async(req,res)=>{
  catch(e){console.error('[Data Stor] record read failed:',e.message);res.status(503).json({ok:false,error:'Record load ব্যর্থ হয়েছে।'});}
 });
 app.post('/api/data-stor/records/:id/unlock',requireUserAuth,async(req,res)=>{
- const user=dataStorUser(req,res);if(!user)return;const id=String(req.params.id||'');if(!/^[1-9]\\d{0,14}$/.test(id)||!Number.isSafeInteger(Number(id)))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
+ const user=dataStorUser(req,res);if(!user)return;if(!allowDataStorAction(user.id,'unlock',20))return res.status(429).json({ok:false,error:'অনেক বেশি unlock request হয়েছে। এক মিনিট পরে চেষ্টা করুন।'});const id=String(req.params.id||'');if(!/^[1-9]\\d{0,14}$/.test(id)||!Number.isSafeInteger(Number(id)))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
  if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});const client=await pool.connect();
  try{await client.query('BEGIN');const bal=await client.query('SELECT balance FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);if(!bal.rowCount){await client.query('ROLLBACK');return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});}
  const rec=await client.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records WHERE id=$1',[id]);if(!rec.rowCount){await client.query('ROLLBACK');return res.status(404).json({ok:false,error:'Record পাওয়া যায়নি।'});}
  const prev=await client.query('SELECT id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=$2',[String(user.id),id]),current=Number(bal.rows[0].balance)||0;
- if(prev.rowCount){await client.query('COMMIT');return res.json({ok:true,alreadyUnlocked:true,charged:0,balance:current,record:rec.rows[0]});}
+ if(prev.rowCount){await client.query('COMMIT');user.balance=current;return res.json({ok:true,alreadyUnlocked:true,charged:0,balance:current,record:rec.rows[0]});}
  if(current<DATA_STOR_UNLOCK_PRICE){await client.query('ROLLBACK');return res.status(402).json({ok:false,error:'নতুন রেকর্ড আনলক করতে ৳৩০ প্রয়োজন।',balance:current,required:30});}
  const next=Math.round((current-DATA_STOR_UNLOCK_PRICE)*100)/100,now=Date.now(),key='data-stor-record:'+id;
  await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
