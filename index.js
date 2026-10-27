@@ -723,9 +723,11 @@ app.post('/api/balance/charge-download',requireUserAuth,async(req,res)=>{
       await client.query('BEGIN');
       const prior=await client.query('SELECT amount,balance_after FROM fil_usage_charges WHERE user_id=$1 AND idempotency_key=$2',[String(user.id),key]);
       if(prior.rowCount){
+        const latest=await client.query('SELECT balance FROM fil_users WHERE id=$1',[String(user.id)]);
+        const currentBalance=latest.rowCount?Number(latest.rows[0].balance)||0:Number(user.balance)||0;
         await client.query('COMMIT');
-        user.balance=Number(prior.rows[0].balance_after)||0;
-        return res.json({ok:true,balance:user.balance,charged:0,alreadyCharged:true,local:false});
+        user.balance=currentBalance;
+        return res.json({ok:true,balance:currentBalance,charged:0,alreadyCharged:true,local:false});
       }
       const locked=await client.query('SELECT balance FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);
       const current=locked.rowCount?Number(locked.rows[0].balance)||0:Number(user.balance)||0;
