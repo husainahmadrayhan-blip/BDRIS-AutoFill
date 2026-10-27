@@ -2701,11 +2701,12 @@ async function printCertificate() {
     if (!pdfBlob || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
     // Printing opens the exact generated PDF; browser cannot reliably confirm physical print completion.
     const printUrl = URL.createObjectURL(pdfBlob);
-    const printWindow = window.open(printUrl, '_blank', 'noopener');
+    const printWindow = window.open(printUrl, '_blank');
     if (!printWindow) {
       URL.revokeObjectURL(printUrl);
       throw new Error('Print window block হয়েছে। Browser popup অনুমতি দিন।');
     }
+    try { printWindow.opener = null; } catch (_) {}
     status('Certificate PDF খোলা হয়েছে। নতুন ট্যাবে Print ব্যবহার করুন।', 'ok');
     setTimeout(() => URL.revokeObjectURL(printUrl), 60000);
   } catch (e) {
