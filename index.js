@@ -926,7 +926,7 @@ app.patch('/api/pdf-images/:id/position',(req,res)=>{
   const image=(store.images||[]).find(x=>x.id===req.params.id);
   if(!image)return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
   const old=image.position||{};
-  const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
+  const n=(key,def)=>{const supplied=req.body?.[key];if(supplied!==undefined&&supplied!==null&&supplied!==''){const v=Number(supplied);if(Number.isFinite(v))return v;}const saved=Number(old[key]);return Number.isFinite(saved)?saved:def;};
   image.position={...old,x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
   image.updatedAt=Date.now(); savePDFImageLibrary(store);
   res.json({ok:true,image:pdfImageMeta(image)});
@@ -937,7 +937,7 @@ app.post('/api/pdf-images/:id/position',(req,res)=>{
   const image=(store.images||[]).find(x=>x.id===req.params.id);
   if(!image)return res.status(404).json({ok:false,error:'Image পাওয়া যায়নি।'});
   const old=image.position||{};
-  const n=(key,def)=>{const v=Number(req.body?.[key]);return Number.isFinite(v)?v:(Number(old[key])||def);};
+  const n=(key,def)=>{const supplied=req.body?.[key];if(supplied!==undefined&&supplied!==null&&supplied!==''){const v=Number(supplied);if(Number.isFinite(v))return v;}const saved=Number(old[key]);return Number.isFinite(saved)?saved:def;};
   image.position={...old,x:n('x',105),y:n('y',247),z:n('z',100),w:n('w',24),h:n('h',10)};
   image.updatedAt=Date.now(); savePDFImageLibrary(store);
   return res.json({ok:true,image:pdfImageMeta(image)});
