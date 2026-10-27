@@ -27,6 +27,10 @@ test('registration-office matching calls the existing matching endpoint and sele
 
 test('Neon image metadata stores file size and keeps migration additive', () => {
   assert.match(server, /file_size bigint NOT NULL DEFAULT 0/);
+  assert.match(server, /ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false/);
+  assert.match(server, /WHERE deleted=false ORDER BY created_at/);
+  assert.match(server, /UPDATE fil_images SET deleted=true/);
+  assert.doesNotMatch(server, /DELETE FROM fil_images WHERE NOT/);
   assert.match(server, /ADD COLUMN IF NOT EXISTS file_size bigint NOT NULL DEFAULT 0/);
   assert.match(server, /file_size=EXCLUDED\.file_size/);
   assert.match(server, /fileSize:Number\(row\.file_size\)\|\|0/);
