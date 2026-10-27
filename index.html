@@ -710,11 +710,11 @@ body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .side
    <div class="ref-user-copy"><small>স্বাগতম</small><strong>মিরাজ</strong><span>আপনার প্রয়োজনীয় সেবা এক জায়গায়</span></div>
   </div>
   <div class="ref-balance"><span class="ref-wallet">▣</span><div><small>বর্তমান ব্যালেন্স</small><strong id="dashBalance">৳0.00</strong></div><button type="button" onclick="openPaymentRecharge()" aria-label="ব্যালেন্স যোগ করুন">＋</button></div>
-  <button type="button" class="ref-bell" onclick="openServiceWindow('transactions')" aria-label="নোটিফিকেশন">♟<i>3</i></button>
+  <button type="button" class="ref-bell" onclick="openServiceWindow('transactions')" aria-label="নোটিফিকেশন">🔔<i>3</i></button>
  </header>
  <section class="ref-hero" aria-label="সরকারি নিবন্ধন সেবা">
   <div class="ref-hero-copy"><h2>সরকারি নিবন্ধন সেবা<br><span>এখন আরও সহজে</span></h2><p>নিরাপদ, দ্রুত এবং নির্ভরযোগ্য সেবা</p></div>
-  <div class="ref-hero-art" aria-hidden="true"><div class="ref-doc ref-doc-back"></div><div class="ref-doc ref-doc-front"><span class="ref-seal">🇧🇩</span><i></i><i></i><i></i><b>▪</b></div><span class="ref-ribbon">●</span><span class="ref-flower">✿</span></div>
+  <div class="ref-hero-art" aria-hidden="true"><div class="ref-doc ref-doc-back"></div><div class="ref-doc ref-doc-front"><img class="ref-seal-image" src="govt-logo.png" alt="বাংলাদেশ সরকার"><i></i><i></i><i></i><b>▪</b></div><span class="ref-ribbon">●</span><span class="ref-flower">✿</span></div>
   <div class="ref-hero-dots"><i class="active"></i><i></i><i></i></div>
  </section>
  <div class="dashboard-section-head ref-services-heading"><div><h3>সার্ভিসসমূহ</h3><p>আপনার প্রয়োজনীয় সেবা বেছে নিন</p></div></div>
@@ -3122,7 +3122,7 @@ body:not(.service-window-mode){background:#eaf4fc!important}
 .reference-home .ref-doc{position:absolute;width:58%;height:88%;top:8%;right:10%;border:2px solid #fff;border-radius:13px;background:linear-gradient(160deg,#fff,#e8f5ff);box-shadow:0 12px 24px #376da633}
 .reference-home .ref-doc-back{right:36%;top:20%;transform:rotate(-12deg);opacity:.85;background:linear-gradient(160deg,#f7f0ff,#fff)}
 .reference-home .ref-doc-front{display:flex;flex-direction:column;align-items:center;padding:9% 8%;transform:rotate(9deg)}
-.reference-home .ref-seal{display:grid;place-items:center;width:43px;height:43px;border:2px solid #06a75d;border-radius:50%;font-size:24px;margin-bottom:9%}
+.reference-home .ref-seal-image{display:block;width:43px;height:43px;object-fit:contain;border:2px solid #06a75d;border-radius:50%;padding:3px;margin-bottom:9%;background:#fff}
 .reference-home .ref-doc-front i{display:block;width:88%;height:6px;margin:4% 0;border-radius:6px;background:#9cccf9}
 .reference-home .ref-doc-front b{align-self:flex-start;margin-top:auto;width:22px;height:16px;background:#8cdbf0;border-radius:3px;color:transparent}
 .reference-home .ref-ribbon{position:absolute;right:4%;bottom:0;width:47px;height:72px;color:transparent;border-left:13px solid #101c31;border-right:13px solid #101c31;transform:rotate(35deg);opacity:.95}
@@ -3176,7 +3176,7 @@ body.service-window-mode #sideMenuTrigger{display:flex!important}
  .reference-home .ref-bell i{width:23px;height:23px;font-size:12px}
  .reference-home .ref-hero{min-height:175px;padding:20px 5%;margin-bottom:18px;border-radius:28px}
  .reference-home .ref-hero-copy{max-width:65%}.reference-home .ref-hero-copy h2{font-size:clamp(19px,5.5vw,27px);margin-bottom:9px}.reference-home .ref-hero-copy p{font-size:12px}
- .reference-home .ref-hero-art{right:0;width:39%;min-width:110px;height:80%}.reference-home .ref-doc{border-radius:8px}.reference-home .ref-seal{width:28px;height:28px;font-size:16px}.reference-home .ref-ribbon{width:30px;height:45px;border-left-width:8px;border-right-width:8px}.reference-home .ref-flower{font-size:27px}
+ .reference-home .ref-hero-art{right:0;width:39%;min-width:110px;height:80%}.reference-home .ref-doc{border-radius:8px}.reference-home .ref-seal-image{width:28px;height:28px;padding:2px}.reference-home .ref-ribbon{width:30px;height:45px;border-left-width:8px;border-right-width:8px}.reference-home .ref-flower{font-size:27px}
  .reference-home .ref-hero-dots{bottom:7px}.reference-home .ref-hero-dots i{width:7px;height:7px}.reference-home .ref-hero-dots i.active{width:22px}
  .reference-home .ref-services-heading h3{font-size:17px}
  #dashboardServices.dashboard-service-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:8px!important}
