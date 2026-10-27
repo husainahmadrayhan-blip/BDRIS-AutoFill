@@ -64,3 +64,11 @@ The branch `fix/neon-pdf-image-persistence-2026-10-27` contains additional in-pr
 - SutonnyMJ and Suleman Sharif Ambad font files were not found at the expected repository paths. Their actual font binaries and licensing/encoding details are required before adding them to the selector or claiming PDF embedding support.
 - The updated branch has not been merged into `main`, and a Render deployment of these latest commits has not been verified.
 - A complete project ZIP, runtime/browser tests, live DB checks, and responsive visual checks remain outstanding.
+
+
+## Follow-up hardening — 2026-10-27
+
+- Neon image row mapping now applies metadata first and authoritative database columns afterward, so stale JSON metadata cannot override the saved ID, file name, MIME type, position, file size, permanence flag, or timestamps.
+- Both position-save API aliases now preserve extra existing position properties (for example rotation/alignment/scale) while updating the standard x/y/z/w/h fields.
+- Added source regression checks for these two preservation rules.
+- These are source-level changes only until the latest branch CI and live database/browser tests report results. Do not merge or deploy solely on the basis of static checks.
