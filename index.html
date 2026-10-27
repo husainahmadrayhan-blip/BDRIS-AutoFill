@@ -728,7 +728,7 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
 </aside></div>
 
 <!-- Certificate Preview action stays at the very bottom of the form -->
-<div class="bottom-preview-action"><button class="pdf" onclick="previewPDF()">📄 Certificate Preview <small style="display:block;font-size:9px;opacity:.8">৳4 কাটবে</small></button></div>
+<div class="bottom-preview-action"><button class="pdf" onclick="previewPDF()">📄 Certificate Preview <small style="display:block;font-size:9px;opacity:.8">ফ্রি Preview</small></button></div>
 
 <!-- Certificate Preview -->
 <div id="certPreview" class="cert-preview" style="display:none">
@@ -744,7 +744,7 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
     </label>
     <button type="button" class="close-preview" onclick="savePDFImagePosition()">💾 পজিশন সেভ করুন</button>
     <button type="button" class="close-preview" onclick="closeCertificatePreview()">✕ প্রিভিউ বন্ধ করুন</button>
-    <button type="button" class="download-cert" onclick="downloadPDF()">⬇️ সার্টিফিকেট ডাউনলোড</button>
+    <button type="button" class="close-preview" onclick="printPDF()">🖨️ Certificate Print</button><button type="button" class="download-cert" onclick="downloadPDF()">⬇️ সার্টিফিকেট ডাউনলোড</button>
   </div>
 </div>
 </div>
@@ -2584,17 +2584,15 @@ async function refreshUserBalance(){
   catch(_){}
 }
 let previewChargeInFlight = null;
-async function chargeForPreview(){
-  if(previewChargeInFlight) return previewChargeInFlight;
-  previewChargeInFlight = (async()=>{
-  const r=await fetch('/api/balance/charge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:4})});
+// Preview is free; balance is only charged by the server after PDF generation succeeds.
+async function chargeForDownload(){
+  const key=(crypto.randomUUID?crypto.randomUUID():('dl-'+Date.now()+'-'+Math.random().toString(16).slice(2)));
+  const r=await fetch('/api/balance/charge-download',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify({operation:'download'})});
   const d=await r.json().catch(()=>({}));
-  if(!r.ok||!d.ok) throw new Error(d.error||'Balance charge failed');
+  if(!r.ok||!d.ok) throw new Error(d.error||'Download charge failed');
   persistFreshAuth(d);
   if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);
   return d;
-  })();
-  try { return await previewChargeInFlight; } finally { previewChargeInFlight = null; }
 }
 function togglePrintSeal(enabled){
   if(enabled && !selectedPDFImageId){
@@ -2610,31 +2608,45 @@ function togglePrintSeal(enabled){
 }
 
 async function previewPDF(options={}){
-  if(!options.skipCharge){
-    try{ await chargeForPreview(); }catch(e){ status(e.message,'err'); await refreshUserBalance(); return; }
-  }
   const previewPromise = generatePDF({saveHistory:false,showPreviewEarly:true});
   setTimeout(()=>$('certPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),40);
   await previewPromise;
 }
 
+let downloadInFlight=null;
 async function downloadPDF() {
-  try {
-    // Image editor changes live in the preview. Rebuild the real PDF only once, at download time.
-    if(!pdfBlob || pdfPreviewNeedsHistorySave){
-      await generatePDF({saveHistory:true});
+  if(downloadInFlight) return downloadInFlight;
+  const button=document.querySelector('.download-cert');
+  if(button)button.disabled=true;
+  downloadInFlight=(async()=>{
+    try {
+      // Generate and validate the PDF before billing. Failed rendering never charges.
+      if(!pdfBlob || pdfPreviewNeedsHistorySave) await generatePDF({saveHistory:true});
+      if(!pdfBlob || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
+      await chargeForDownload();
+      pdfPreviewNeedsHistorySave=false;
+      const link=document.createElement('a');
+      link.href=pdfUrl;
+      link.download='Birth_Certificate.pdf';
+      document.body.appendChild(link); link.click(); link.remove();
+    } catch(e) {
+      status('PDF download ব্যর্থ: '+e.message,'err');
+      await refreshUserBalance();
+    } finally {
+      if(button)button.disabled=false;
+      downloadInFlight=null;
     }
-    if(!pdfBlob || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
-    pdfPreviewNeedsHistorySave=false;
-    const link = document.createElement('a');
-    link.href = pdfUrl;
-    link.download = 'Birth_Certificate.pdf';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  } catch(e) {
-    status('PDF download ব্যর্থ: '+e.message,'err');
+  })();
+  return downloadInFlight;
+}
+function printPDF(){
+  if(!pdfBlob || !pdfUrl){
+    status('প্রথমে Certificate Preview তৈরি করুন।','err');
+    return;
   }
+  const opened=window.open(pdfUrl,'_blank');
+  if(!opened) status('Print করার জন্য browser popup অনুমতি দিন।','err');
+  else status('PDF নতুন ট্যাবে খোলা হয়েছে। সেখান থেকে Print করুন।','ok');
 }
 
 window.addEventListener('message',e=>{
