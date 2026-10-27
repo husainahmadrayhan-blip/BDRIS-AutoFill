@@ -27,5 +27,9 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run syntax and regression tests
+      - name: Install browser and run production syntax checks
+        run: npm run build
+      - name: Run regression tests
         run: npm test
+      - name: Run browser smoke test
+        run: npm run test:browser
