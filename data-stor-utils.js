@@ -25,10 +25,8 @@ function parseDataStorCsv(text) {
   const rows = []; let row = []; let field = ''; let quoted = false;
   for (let i=0; i<input.length; i++) {
     const ch=input[i];
-    if (ch === '"') {
-      if (quoted && input[i+1] === '"') { field += '"'; i++; }
-      else quoted = !quoted;
-    } else if (ch === ',' && !quoted) { row.push(field); field = ''; }
+    if (ch === '"') { if (quoted && input[i+1] === '"') { field += '"'; i++; } else quoted = !quoted; }
+    else if (ch === ',' && !quoted) { row.push(field); field = ''; }
     else if ((ch === '\n' || ch === '\r') && !quoted) {
       if (ch === '\r' && input[i+1] === '\n') i++;
       row.push(field); field = '';
@@ -39,10 +37,7 @@ function parseDataStorCsv(text) {
   row.push(field); if (row.some(v => String(v).trim())) rows.push(row);
   if (rows.length < 2) throw new Error('CSV header ও অন্তত একটি data row প্রয়োজন।');
   const headers = rows.shift().map(v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' '));
-  const get = (r, names) => {
-    for (const name of names) { const i = headers.indexOf(name.toLowerCase()); if (i >= 0) return String(r[i] ?? '').replace(/\s+/g, ' ').trim(); }
-    return '';
-  };
+  const get = (r, names) => { for (const name of names) { const i = headers.indexOf(name.toLowerCase()); if (i >= 0) return String(r[i] ?? '').replace(/\s+/g, ' ').trim(); } return ''; };
   const valid = [], seen = new Set();
   const summary = { imported: 0, updated: 0, skipped: 0, invalidDate: 0, invalidBrn: 0, duplicates: 0 };
   for (const r of rows) {
@@ -56,8 +51,7 @@ function parseDataStorCsv(text) {
     const nameBn = get(r, ['বাংলা নাম', 'name_bn', 'namebn', 'bangla name']);
     const nameEn = get(r, ['english name', 'name_en', 'nameen', 'name']);
     const g = get(r, ['gender', 'লিঙ্গ']).toLowerCase();
-    const gender = ['m','male','পুরুষ'].includes(g) ? 'male' :
-      (['f','female','নারী','মহিলা'].includes(g) ? 'female' : (['o','other','অন্যান্য'].includes(g) ? 'other' : g));
+    const gender = ['m','male','পুরুষ'].includes(g) ? 'male' : (['f','female','নারী','মহিলা'].includes(g) ? 'female' : (['o','other','অন্যান্য'].includes(g) ? 'other' : g));
     valid.push({ brn, dob, nameBn, nameEn, gender });
   }
   return { rows: valid, summary };
