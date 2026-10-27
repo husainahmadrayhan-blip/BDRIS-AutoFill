@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const cors = require('cors');
 const { Pool } = require('pg');
 const { resolvePdfImageStorage } = require('./pdf-image-storage');
+const dataStorUtils = require('./data-stor-utils');
 const app = express();
 
 app.use(cors());
@@ -723,52 +724,10 @@ app.post('/api/automation/jobs/:id/cancel',requireUserAuth,(req,res)=>forwardAut
 
 
 const DATA_STOR_UNLOCK_PRICE = 30;
-function normalizeDataStorDob(value) {
-  const parts = String(value || '').trim().split(/[\/-]/).map(Number);
-  if (parts.length !== 3 || parts.some(n => !Number.isInteger(n))) return '';
-  let year, month, day;
-  if (parts[0] >= 1000) [year, month, day] = parts; else [day, month, year] = parts;
-  if (year < 1000 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) return '';
-  const d = new Date(Date.UTC(year, month - 1, day));
-  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return '';
-  return year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-}
-function normalizeDataStorBrn(value) {
-  const text = String(value || '').trim().replace(/\s+/g,'');
-  return /^\d{17}$/.test(text) ? text : '';
-}
-function maskDataStorBrn(value) { return '•••••••••••••' + String(value || '').slice(-4); }
-function parseDataStorCsv(text) {
-  const input = String(text || '').replace(/^\uFEFF/, '');
-  const rows = []; let row = []; let field = ''; let quoted = false;
-  for (let i=0; i<input.length; i++) {
-    const ch=input[i];
-    if (ch==='"') { if (quoted && input[i+1]==='"') { field+='"'; i++; } else quoted=!quoted; }
-    else if (ch===',' && !quoted) { row.push(field); field=''; }
-    else if ((ch==='\n'||ch==='\r') && !quoted) {
-      if(ch==='\r'&&input[i+1]==='\n')i++;
-      row.push(field);field='';if(row.some(v=>String(v).trim()))rows.push(row);row=[];
-    } else field+=ch;
-  }
-  row.push(field);if(row.some(v=>String(v).trim()))rows.push(row);
-  if(rows.length<2)throw new Error('CSV header ও অন্তত একটি data row প্রয়োজন।');
-  const headers=rows.shift().map(v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' '));
-  const get=(r,names)=>{for(const n of names){const i=headers.indexOf(n.toLowerCase());if(i>=0)return String(r[i]??'').trim();}return '';};
-  const valid=[],seen=new Set(),summary={imported:0,updated:0,skipped:0,invalidDate:0,invalidBrn:0,duplicates:0};
-  for(const r of rows){
-    const brn=normalizeDataStorBrn(get(r,['brn','birth registration number','birth_registration_number']));
-    if(!brn){summary.invalidBrn++;summary.skipped++;continue;}
-    if(seen.has(brn)){summary.duplicates++;continue;}seen.add(brn);
-    const dob=normalizeDataStorDob(get(r,['dob','date of birth','জন্ম তারিখ']));
-    if(!dob){summary.invalidDate++;summary.skipped++;continue;}
-    const nameBn=get(r,['বাংলা নাম','name_bn','namebn','bangla name']);
-    const nameEn=get(r,['english name','name_en','nameen','name']);
-    const g=get(r,['gender','লিঙ্গ']).toLowerCase();
-    const gender=['m','male','পুরুষ'].includes(g)?'male':(['f','female','নারী','মহিলা'].includes(g)?'female':(['o','other','অন্যান্য'].includes(g)?'other':g));
-    valid.push({brn,dob,nameBn,nameEn,gender});
-  }
-  return {rows:valid,summary};
-}
+function normalizeDataStorDob(value){return dataStorUtils.normalizeDataStorDob(value);}
+function normalizeDataStorBrn(value){return dataStorUtils.normalizeDataStorBrn(value);}
+function maskDataStorBrn(value){return dataStorUtils.maskDataStorBrn(value);}
+function parseDataStorCsv(value){return dataStorUtils.parseDataStorCsv(value);}
 function requireDataStorUser(req,res) {
   if(!req.auth||req.auth.kind!=='user'){res.status(401).json({ok:false,error:'AutoFill-এ লগইন করুন।'});return null;}
   const user=authStore.users.find(u=>String(u.id)===String(req.auth.userId)&&u.enabled!==false);
