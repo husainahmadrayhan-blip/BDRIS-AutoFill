@@ -110,6 +110,8 @@ body:not(.login-locked) .cert-preview{background:#050b10!important;border-color:
 @font-face{font-family:'Noto Serif Bengali';src:url('/fonts/NotoSerifBengali-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
 @font-face{font-family:'Noto Serif Bengali Condensed';src:url('/fonts/NotoSerifBengali-Condensed.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:'Noto Sans Bengali';src:url('/fonts/NotoSansBengali-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'SolaimanLipi';src:url('/fonts/SolaimanLipi-Thin.ttf') format('truetype');font-weight:300 400;font-style:normal;font-display:swap}
+@font-face{font-family:'SolaimanLipi';src:url('/fonts/SolaimanLipi-Normal.ttf') format('truetype');font-weight:400 700;font-style:normal;font-display:swap}
 @font-face{font-family:'FreeSerif Bengali';src:url('/fonts/FreeSerif.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:'FreeSerif Bengali';src:url('/fonts/FreeSerifBold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
 body:not(.login-locked){
@@ -694,6 +696,8 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
       <option value="FreeSerif-Regular">FreeSerif Bengali - Regular</option>
       <option value="FreeSerif-Bold">FreeSerif Bengali - Bold</option>
       <option value="NotoSerifBengali-Condensed">Noto Serif Bengali - Condensed</option>
+      <option value="SolaimanLipi-Thin">SolaimanLipi - Thin</option>
+      <option value="SolaimanLipi-Normal">SolaimanLipi - Normal</option>
       <option value="SutonnyMJ" disabled>SutonnyMJ (প্রকৃত font file প্রয়োজন)</option>
       <option value="SulemanSharifAmbad" disabled>Suleman Sharif Ambad (প্রকৃত font file প্রয়োজন)</option>
     </select>
@@ -1341,11 +1345,13 @@ const BENGALI_FONT_DEFINITIONS = {
   'NotoSansBengali-Regular': {family:'Noto Sans Bengali',path:'/fonts/NotoSansBengali-Regular.ttf',weight:400},
   'FreeSerif-Regular': {family:'FreeSerif Bengali',path:'/fonts/FreeSerif.ttf',weight:400},
   'FreeSerif-Bold': {family:'FreeSerif Bengali',path:'/fonts/FreeSerifBold.ttf',weight:700},
-  'NotoSerifBengali-Condensed': {family:'Noto Serif Bengali Condensed',path:'/fonts/NotoSerifBengali-Condensed.ttf',weight:400}
+  'NotoSerifBengali-Condensed': {family:'Noto Serif Bengali Condensed',path:'/fonts/NotoSerifBengali-Condensed.ttf',weight:400},
+  'SolaimanLipi-Thin': {family:'SolaimanLipi',path:'/fonts/SolaimanLipi-Thin.ttf',weight:300},
+  'SolaimanLipi-Normal': {family:'SolaimanLipi',path:'/fonts/SolaimanLipi-Normal.ttf',weight:400}
 };
 const LEGACY_BENGALI_FONT_ALIASES = {
   NikoshLight:'NotoSerifBengali-Regular',
-  SolaimanLipi:'NotoSansBengali-Regular',
+  SolaimanLipi:'SolaimanLipi-Normal',
   SutonnyOMJ:'NotoSerifBengali-Condensed'
 };
 function normalizeBengaliFont(value){

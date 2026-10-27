@@ -20,7 +20,8 @@ The app automatically creates its PostgreSQL tables on startup when `DATABASE_UR
 - The `fil_usage_charges` table records idempotent certificate-download charges. Preview does not debit the wallet. Download uses the existing per-user `previewRate` value; no new print price is assumed because no separate print rate is configured.
 - Image Library now has search and lazy-loaded previews, and the standalone library page has a search filter. No fixed 10-image count limit was found in the current upload API.
 - The Data Stor menu opens the existing search site. It is **not** SSO: Data Stor currently uses its own approved-user session cookie, and no documented server-to-server identity endpoint or shared authentication secret was found. Do not put Data Stor credentials in browser code.
-- SutonnyMJ and Suleman Sharif Ambad are shown as unavailable in the font selector until their real font files are supplied. No fake font files are included.
+- SolaimanLipi Thin and Normal are supported in the certificate font selector and PDF font embedding flow. Their files must exist at `/fonts/SolaimanLipi-Thin.ttf` and `/fonts/SolaimanLipi-Normal.ttf` respectively.
+- SutonnyMJ and Suleman Sharif Ambad remain unavailable until their real font files are supplied. No fake font files are included.
 
 The main-branch GitHub Actions workflow runs the build, regression tests and browser smoke test on each push. Check the latest run before treating a deployment as verified.
 
