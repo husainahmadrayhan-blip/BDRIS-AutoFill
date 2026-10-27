@@ -37,6 +37,13 @@ test('Neon image metadata stores file size and keeps migration additive', () => 
   assert.match(server, /image\.fileSize=buffer\.length/);
 });
 
+test('missing saved image positions are not silently fabricated or reused', () => {
+  assert.match(server, /position:x\.position&&Object\.keys\(x\.position\)\.length\?x\.position:null/);
+  assert.match(html, /const hasSavedPosition=applySavedPDFImagePosition\(img\.id\)/);
+  assert.match(html, /এই Image-এর saved position পাওয়া যায়নি/);
+  assert.match(html, /অন্য Image-এর position ব্যবহার করা হয়নি/);
+});
+
 test('async helpers that await work are declared async', () => {
   for (const name of ['savePDFImagePosition', 'generateQRImage', 'loadPDFImageLibrary', 'selectPDFImage', 'previewPDF', 'printCertificate']) {
     assert.match(html, new RegExp('async\\s+function\\s+' + name + '\\s*\\('), name + ' should be async');
