@@ -932,7 +932,7 @@ function ensurePermanentOfficeImageSlots(){
   for(const x of store.images||[]){
     if(PERMANENT_OFFICE_IMAGE_NAMES.some(n=>n.toLowerCase()===String(x.name||'').trim().toLowerCase()) && x.permanent!==true){x.permanent=true;changed=true;}
   }
-  if(changed)await savePDFImageLibrary(store);
+  if(changed)savePDFImageLibrary(store);
 }
 ensurePermanentOfficeImageSlots();
 
