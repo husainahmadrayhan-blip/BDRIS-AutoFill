@@ -700,6 +700,61 @@ function requireUserAuth(req,res,next){
 }
 function requireAdmin(req,res,next){const session=authUser(req);if(!session||session.kind!=='admin')return res.status(403).json({ok:false,error:'Admin access required.'});req.auth=session;next();}
 app.get('/api/auth/me',requireAuth,(req,res)=>res.json({ok:true,session:req.auth}));
+
+const passwordChangeRate = new Map();
+app.post('/api/auth/change-password', requireUserAuth, async (req,res) => {
+  if (!req.auth || req.auth.kind !== 'user') return res.status(401).json({ok:false,error:'AutoFill User হিসেবে লগইন করুন।'});
+  const user = authStore.users.find(u => String(u.id) === String(req.auth.userId) && u.enabled !== false);
+  if (!user) return res.status(403).json({ok:false,error:'সক্রিয় User account পাওয়া যায়নি।'});
+  const now = Date.now(), uid = String(user.id);
+  const rate = passwordChangeRate.get(uid);
+  if (rate && now - rate.startedAt < 10 * 60 * 1000 && rate.count >= 5) {
+    return res.status(429).json({ok:false,error:'অনেকবার চেষ্টা করেছেন। ১০ মিনিট পরে আবার চেষ্টা করুন।'});
+  }
+  if (!rate || now - rate.startedAt >= 10 * 60 * 1000) passwordChangeRate.set(uid,{startedAt:now,count:1});
+  else rate.count++;
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+  if (!currentPassword || newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ok:false,error:'বর্তমান পাসওয়ার্ড দিন এবং নতুন পাসওয়ার্ড ৮ থেকে ১২৮ অক্ষরের রাখুন।'});
+  }
+  if (currentPassword === newPassword) return res.status(400).json({ok:false,error:'নতুন পাসওয়ার্ডটি বর্তমান পাসওয়ার্ড থেকে আলাদা হতে হবে।'});
+  try {
+    let currentHash = user.passwordHash;
+    if (pool) {
+      if (!dbReady) return res.status(503).json({ok:false,error:'Database এখনো প্রস্তুত নয়। পরে চেষ্টা করুন।'});
+      const current = await pool.query('SELECT password_hash FROM fil_users WHERE id=$1 AND enabled=true',[uid]);
+      if (!current.rowCount) return res.status(403).json({ok:false,error:'সক্রিয় User account পাওয়া যায়নি।'});
+      currentHash = current.rows[0].password_hash;
+    }
+    const currentBytes = Buffer.from(String(currentHash || ''));
+    const suppliedBytes = Buffer.from(hashPassword(currentPassword));
+    const matches = currentBytes.length === suppliedBytes.length && crypto.timingSafeEqual(currentBytes,suppliedBytes);
+    if (!matches) return res.status(401).json({ok:false,error:'বর্তমান পাসওয়ার্ড সঠিক নয়।'});
+    const passwordHash = hashPassword(newPassword);
+    if (pool) {
+      const updated = await pool.query('UPDATE fil_users SET password_hash=$2 WHERE id=$1 AND enabled=true RETURNING id',[uid,passwordHash]);
+      if (!updated.rowCount) return res.status(403).json({ok:false,error:'সক্রিয় User account পাওয়া যায়নি।'});
+    }
+    user.passwordHash = passwordHash;
+    if (!pool) saveAuthStore(authStore);
+    else {
+      try { fs.writeFileSync(AUTH_FILE,JSON.stringify(authStore,null,2)); }
+      catch (fileError) { console.warn('[Auth] local cache sync failed:',String(fileError?.message||fileError)); }
+    }
+    const currentToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i,'');
+    for (const [token,session] of authSessions) {
+      if (token !== currentToken && session.kind === 'user' && String(session.userId) === uid) authSessions.delete(token);
+    }
+    passwordChangeRate.set(uid,{startedAt:now,count:0});
+    res.set('Cache-Control','no-store');
+    return res.json({ok:true,message:'পাসওয়ার্ড পরিবর্তন হয়েছে। অন্য সক্রিয় সেশনগুলো বন্ধ করা হয়েছে।'});
+  } catch (error) {
+    console.error('[Auth] password change failed:',String(error?.message||error));
+    return res.status(503).json({ok:false,error:'পাসওয়ার্ড পরিবর্তন করা যায়নি। পরে আবার চেষ্টা করুন।'});
+  }
+});
+
 async function forwardAutomationRequest(req,res,method,pathSuffix,body){
   const base=String(process.env.AUTOMATION_SERVER_URL||'').replace(/\/+$/,'');
   const apiKey=process.env.AUTOMATION_API_KEY;
