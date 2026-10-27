@@ -736,7 +736,7 @@ function dataStorDob(value){
  const x=new Date(Date.UTC(y,m-1,d));if(x.getUTCFullYear()!==y||x.getUTCMonth()!==m-1||x.getUTCDate()!==d)return '';
  return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
 }
-function dataStorBrn(value){const s=String(value||'').trim().replace(/\\s+/g,'');return /^\\d{17}$/.test(s)?s:'';}
+function dataStorBrn(value){const s=String(value||'').trim().replace(/\s+/g,'');return /^\d{17}$/.test(s)?s:'';}
 function dataStorMask(value){return '•••••••••••••'+String(value||'').slice(-4);}
 function dataStorUser(req,res){
  if(!req.auth||req.auth.kind!=='user'){res.status(401).json({ok:false,error:'AutoFill-এ লগইন করুন।'});return null;}
@@ -744,13 +744,13 @@ function dataStorUser(req,res){
  if(!user){res.status(403).json({ok:false,error:'এই AutoFill অ্যাকাউন্ট সক্রিয় নেই।'});return null;}return user;
 }
 function parseDataStorCsv(text){
- const input=String(text||'').replace(/^\\uFEFF/,'');const rows=[];let row=[],field='',quoted=false;
+ const input=String(text||'').replace(/^\uFEFF/,'');const rows=[];let row=[],field='',quoted=false;
  for(let i=0;i<input.length;i++){const ch=input[i];if(ch==='"'){if(quoted&&input[i+1]==='"'){field+='"';i++;}else quoted=!quoted;}
  else if(ch===','&&!quoted){row.push(field);field='';}
- else if((ch==='\\n'||ch==='\\r')&&!quoted){if(ch==='\\r'&&input[i+1]==='\\n')i++;row.push(field);field='';if(row.some(v=>String(v).trim()))rows.push(row);row=[];}
+ else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&input[i+1]==='\n')i++;row.push(field);field='';if(row.some(v=>String(v).trim()))rows.push(row);row=[];}
  else field+=ch;}
  row.push(field);if(row.some(v=>String(v).trim()))rows.push(row);if(rows.length<2)throw new Error('CSV header ও data row প্রয়োজন।');
- const headers=rows.shift().map(v=>String(v||'').trim().toLowerCase().replace(/\\s+/g,' '));
+ const headers=rows.shift().map(v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' '));
  const get=(r,names)=>{for(const n of names){const i=headers.indexOf(n.toLowerCase());if(i>=0)return String(r[i]??'').trim();}return '';};
  const valid=[],seen=new Set(),summary={imported:0,updated:0,skipped:0,invalidBrn:0,invalidDate:0,duplicates:0};
  for(const r of rows){const brn=dataStorBrn(get(r,['brn','birth registration number','birth_registration_number']));if(!brn){summary.invalidBrn++;summary.skipped++;continue;}
@@ -781,14 +781,14 @@ app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
  catch(e){console.error('[Data Stor] search failed:',e.message);res.status(503).json({ok:false,error:'Search ব্যর্থ হয়েছে।'});}
 });
 app.get('/api/data-stor/records/:id',requireUserAuth,async(req,res)=>{
- const user=dataStorUser(req,res);if(!user)return;const id=String(req.params.id||'');if(!/^[1-9]\\d{0,14}$/.test(id))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
+ const user=dataStorUser(req,res);if(!user)return;const id=String(req.params.id||'');if(!/^[1-9]\d{0,14}$/.test(id))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
  if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
  try{const q=await pool.query('SELECT b.id,b.brn,b.dob::text dob,b.name_bn bn,b.name_en en,b.gender FROM birth_records b JOIN fil_data_record_unlocks u ON u.record_id=b.id WHERE u.user_id=$1 AND b.id=$2',[String(user.id),id]);
  if(!q.rowCount)return res.status(403).json({ok:false,error:'এই রেকর্ডটি আনলক করা নেই।'});res.set('Cache-Control','no-store');res.json({ok:true,record:q.rows[0]});}
  catch(e){console.error('[Data Stor] record read failed:',e.message);res.status(503).json({ok:false,error:'Record load ব্যর্থ হয়েছে।'});}
 });
 app.post('/api/data-stor/records/:id/unlock',requireUserAuth,async(req,res)=>{
- const user=dataStorUser(req,res);if(!user)return;if(!allowDataStorAction(user.id,'unlock',20))return res.status(429).json({ok:false,error:'অনেক বেশি unlock request হয়েছে। এক মিনিট পরে চেষ্টা করুন।'});const id=String(req.params.id||'');if(!/^[1-9]\\d{0,14}$/.test(id)||!Number.isSafeInteger(Number(id)))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
+ const user=dataStorUser(req,res);if(!user)return;if(!allowDataStorAction(user.id,'unlock',20))return res.status(429).json({ok:false,error:'অনেক বেশি unlock request হয়েছে। এক মিনিট পরে চেষ্টা করুন।'});const id=String(req.params.id||'');if(!/^[1-9]\d{0,14}$/.test(id)||!Number.isSafeInteger(Number(id)))return res.status(400).json({ok:false,error:'Record ID সঠিক নয়।'});
  if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});const client=await pool.connect();
  try{await client.query('BEGIN');const bal=await client.query('SELECT balance FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);if(!bal.rowCount){await client.query('ROLLBACK');return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});}
  const rec=await client.query('SELECT id,brn,dob::text dob,name_bn bn,name_en en,gender FROM birth_records WHERE id=$1',[id]);if(!rec.rowCount){await client.query('ROLLBACK');return res.status(404).json({ok:false,error:'Record পাওয়া যায়নি।'});}
