@@ -744,7 +744,7 @@ body:not(.login-locked) button:active, body:not(.login-locked) .btn:active{trans
   </nav>
   <div class="side-card pdf-image-panel">
     <h3>🖼 PDF Image <span id="pdfImageCount" class="badge">0</span></h3><div class="pdf-image-select-label">🖋️ সীল / Image সিলেক্ট করুন</div>
-    <div class="pdf-image-add"><input id="pdfImageNameInput" type="text" placeholder="Image-এর নাম লিখুন" maxlength="120"><button type="button" onclick="addPDFImageName()">＋</button></div><button type="button" class="pdf-image-github-btn" onclick="preparePDFImagesForGitHub()">📦 Prepare for GitHub</button><div class="pdf-image-github-help">Image + saved Position/Size/Zoom একসাথে project-এর <b>pdf-images</b> folder-এর জন্য export হবে। GitHub-এ ওই folder replace করে commit করুন।</div>
+    <div class="pdf-image-add"><input id="pdfImageNameInput" type="text" placeholder="Image-এর নাম লিখুন" maxlength="120"><button type="button" onclick="addPDFImageName()">＋</button></div><input id="pdfImageSearch" type="search" placeholder="Image name search..." oninput="renderPDFImageLibrary()" style="width:100%;max-width:100%;margin:8px 0;padding:9px;border:1px solid #cbd5e1;border-radius:8px"><button type="button" class="pdf-image-github-btn" onclick="preparePDFImagesForGitHub()">📦 Prepare for GitHub</button><div class="pdf-image-github-help">Image + saved Position/Size/Zoom একসাথে project-এর <b>pdf-images</b> folder-এর জন্য export হবে। GitHub-এ ওই folder replace করে commit করুন।</div>
     <input id="pdfImageFileInput" type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handlePDFImageUpload(event)">
     <div id="pdfImageList" class="pdf-image-list"><div class="history-empty">Image Library লোড হচ্ছে...</div></div>
     <div id="pdfImageSelected" class="pdf-image-selected">কোনো Image নির্বাচিত হয়নি।</div>
@@ -1028,14 +1028,17 @@ async function loadPDFImageLibrary(){
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function renderPDFImageLibrary(){
   const box=$('pdfImageList'); if(!box)return;
-  $('pdfImageCount').textContent=pdfImageLibrary.length;
+  const query=String($('pdfImageSearch')?.value||'').trim().toLocaleLowerCase();
+  const visibleImages=pdfImageLibrary.filter(img=>String(img.name||'').toLocaleLowerCase().includes(query));
+  $('pdfImageCount').textContent=visibleImages.length===pdfImageLibrary.length?String(pdfImageLibrary.length):visibleImages.length+'/'+pdfImageLibrary.length;
   if(!pdfImageLibrary.length){box.innerHTML='<div class="history-empty">কোনো PDF Image নেই।</div>';return;}
+  if(!visibleImages.length){box.innerHTML='<div class="history-empty">এই নামে কোনো Image পাওয়া যায়নি।</div>';return;}
   box.innerHTML='';
-  pdfImageLibrary.forEach(img=>{
+  visibleImages.forEach(img=>{
     const item=document.createElement('div'); item.className='pdf-image-item'+(img.id===selectedPDFImageId?' selected':'');
     item.title=img.hasImage?'Click করে Image select করুন':'Click করে Image upload করুন';
     const visual=document.createElement(img.hasImage?'img':'div');
-    if(img.hasImage){visual.className='pdf-image-thumb';visual.alt=img.name;visual.src='/api/pdf-images/'+encodeURIComponent(img.id)+'?raw=1&v='+encodeURIComponent(img.updatedAt||Date.now());visual.onerror=()=>{visual.replaceWith(Object.assign(document.createElement('div'),{className:'pdf-image-icon',textContent:'🖼️'}));};}
+    if(img.hasImage){visual.className='pdf-image-thumb';visual.alt=img.name;visual.loading='lazy';visual.src='/api/pdf-images/'+encodeURIComponent(img.id)+'?raw=1&v='+encodeURIComponent(img.updatedAt||Date.now());visual.onerror=()=>{visual.replaceWith(Object.assign(document.createElement('div'),{className:'pdf-image-icon',textContent:'🖼️'}));};}
     else {visual.className='pdf-image-icon';visual.textContent='🖼️';}
     const text=document.createElement('div'); text.className='pdf-image-name'; text.textContent=img.name;
     const state=document.createElement('span'); state.className='pdf-image-state'; state.textContent=img.hasImage?(img.id===selectedPDFImageId?'✓ PDF-তে নির্বাচিত':'PDF-তে বসাতে ক্লিক করুন'):'Click করে Image upload করুন'; text.appendChild(state);
