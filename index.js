@@ -213,6 +213,13 @@ async function initializeDatabase(){
     await client.query(`CREATE TABLE IF NOT EXISTS fil_income (
       id bigserial PRIMARY KEY, user_id text NOT NULL, username text NOT NULL, amount numeric(14,2) NOT NULL,
       kind text NOT NULL, note text NOT NULL DEFAULT '', created_at bigint NOT NULL)`);
+    await client.query(`CREATE TABLE IF NOT EXISTS fil_images (
+      id text PRIMARY KEY, name text NOT NULL, file_name text NOT NULL DEFAULT '',
+      mime_type text NOT NULL DEFAULT '', image_data bytea, position jsonb NOT NULL DEFAULT '{}'::jsonb,
+      permanent boolean NOT NULL DEFAULT false, created_at bigint NOT NULL DEFAULT 0,
+      updated_at bigint NOT NULL DEFAULT 0, metadata jsonb NOT NULL DEFAULT '{}'::jsonb)`);
+    await client.query('CREATE INDEX IF NOT EXISTS fil_images_name_lower_idx ON fil_images (lower(name))');
+    await initializePdfImageDatabase(client);
     const dbUsers = await client.query('SELECT * FROM fil_users ORDER BY created_at');
     if (!dbUsers.rowCount && (authStore.users||[]).length) {
       // One-time migration of existing local users to Neon on first setup.
@@ -487,7 +494,82 @@ function loadPDFImageLibrary(){
   try { return JSON.parse(fs.readFileSync(PDF_IMAGE_INDEX,'utf8')); }
   catch(_){ return {images:[]}; }
 }
-function savePDFImageLibrary(store){ fs.writeFileSync(PDF_IMAGE_INDEX, JSON.stringify(store,null,2)); }
+function savePDFImageLibrary(store){
+  fs.writeFileSync(PDF_IMAGE_INDEX, JSON.stringify(store,null,2));
+  if (!pool || !dbReady || !Array.isArray(store?.images)) return;
+  // Mirror metadata and binary data to Neon without blocking the synchronous
+  // legacy API. Never delete database rows during a normal save.
+  const snapshot = store.images.map(x => ({...x}));
+  pdfImageDbWriteQueue = pdfImageDbWriteQueue.then(async () => {
+    for (const image of snapshot) {
+      let imageData = null;
+      const fileName = image.fileName ? path.basename(image.fileName) : '';
+      if (fileName) {
+        try { imageData = fs.readFileSync(path.join(PDF_IMAGE_DIR, fileName)); }
+        catch (error) { console.warn('[Neon PDF Images] Binary mirror skipped:', image.id, error.message); }
+      }
+      await pool.query(`INSERT INTO fil_images
+        (id,name,file_name,mime_type,image_data,position,permanent,created_at,updated_at,metadata)
+        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb)
+        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,file_name=EXCLUDED.file_name,
+        mime_type=EXCLUDED.mime_type,
+        image_data=CASE WHEN EXCLUDED.image_data IS NULL AND fil_images.image_data IS NOT NULL
+          AND EXCLUDED.file_name='' THEN fil_images.image_data ELSE EXCLUDED.image_data END,
+        position=EXCLUDED.position,permanent=EXCLUDED.permanent,
+        updated_at=EXCLUDED.updated_at,metadata=EXCLUDED.metadata`,
+        [String(image.id),String(image.name||''),fileName,String(image.mimeType||''),
+         imageData,JSON.stringify(image.position||{}),!!image.permanent,
+         Number(image.createdAt)||0,Number(image.updatedAt)||Date.now(),
+         JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','position','permanent','createdAt','updatedAt'].includes(k))))]);
+    }
+  }).catch(error => console.error('[Neon PDF Images] Write failed:', error.message));
+}
+let pdfImageDbWriteQueue = Promise.resolve();
+async function initializePdfImageDatabase(client) {
+  const result = await client.query('SELECT * FROM fil_images ORDER BY created_at');
+  if (result.rowCount > 0) {
+    // Neon is authoritative when it already contains image records.
+    const images = [];
+    for (const row of result.rows) {
+      const image = {id:row.id,name:row.name,fileName:row.file_name||'',mimeType:row.mime_type||'',
+        position:row.position||{},permanent:!!row.permanent,createdAt:Number(row.created_at)||Date.now(),
+        updatedAt:Number(row.updated_at)||Date.now(),...(row.metadata||{})};
+      if (row.image_data && image.fileName) {
+        const safeName = path.basename(image.fileName);
+        fs.mkdirSync(PDF_IMAGE_DIR,{recursive:true});
+        const target = path.join(PDF_IMAGE_DIR,safeName);
+        if (!fs.existsSync(target)) fs.writeFileSync(target,row.image_data);
+        image.fileName = safeName;
+      } else if (image.fileName && !fs.existsSync(path.join(PDF_IMAGE_DIR,path.basename(image.fileName)))) {
+        image.fileName = '';
+        image.mimeType = '';
+      }
+      images.push(image);
+    }
+    fs.writeFileSync(PDF_IMAGE_INDEX,JSON.stringify({images},null,2));
+    console.log(`[Neon PDF Images] Loaded ${images.length} image record(s) from database.`);
+    return;
+  }
+  // First-run migration is additive and idempotent; existing local files remain untouched.
+  let local = {images:[]};
+  try { local = JSON.parse(fs.readFileSync(PDF_IMAGE_INDEX,'utf8')); } catch (_) {}
+  for (const image of (Array.isArray(local.images)?local.images:[])) {
+    let imageData = null;
+    const fileName = image.fileName ? path.basename(image.fileName) : '';
+    if (fileName) {
+      try { imageData = fs.readFileSync(path.join(PDF_IMAGE_DIR,fileName)); } catch (_) {}
+    }
+    await client.query(`INSERT INTO fil_images
+      (id,name,file_name,mime_type,image_data,position,permanent,created_at,updated_at,metadata)
+      VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb)
+      ON CONFLICT(id) DO NOTHING`,
+      [String(image.id||crypto.randomBytes(12).toString('hex')),String(image.name||''),
+       fileName,String(image.mimeType||''),imageData,JSON.stringify(image.position||{}),!!image.permanent,
+       Number(image.createdAt)||Date.now(),Number(image.updatedAt)||Date.now(),
+       JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','position','permanent','createdAt','updatedAt'].includes(k))))]);
+  }
+  console.log(`[Neon PDF Images] Initial migration checked ${(local.images||[]).length} local record(s); local files were preserved.`);
+}
 // Keep one consistent naming scheme for the PDF Image library.
 function safeImageName(name){ return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').slice(0,120); }
 // Keep one consistent naming scheme for the PDF Image library.
