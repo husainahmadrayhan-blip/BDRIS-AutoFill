@@ -513,8 +513,8 @@ function savePDFImageLibrary(store){
         VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb)
         ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,file_name=EXCLUDED.file_name,
         mime_type=EXCLUDED.mime_type,
-        image_data=CASE WHEN EXCLUDED.image_data IS NULL AND fil_images.image_data IS NOT NULL
-          AND EXCLUDED.file_name='' THEN fil_images.image_data ELSE EXCLUDED.image_data END,
+        image_data=CASE WHEN EXCLUDED.image_data IS NULL AND EXCLUDED.file_name<>''
+          THEN fil_images.image_data ELSE EXCLUDED.image_data END,
         position=EXCLUDED.position,permanent=EXCLUDED.permanent,
         updated_at=EXCLUDED.updated_at,metadata=EXCLUDED.metadata`,
         [String(image.id),String(image.name||''),fileName,String(image.mimeType||''),
@@ -522,6 +522,9 @@ function savePDFImageLibrary(store){
          Number(image.createdAt)||0,Number(image.updatedAt)||Date.now(),
          JSON.stringify(Object.fromEntries(Object.entries(image).filter(([k])=>!['id','name','fileName','mimeType','position','permanent','createdAt','updatedAt'].includes(k))))]);
     }
+    const ids = snapshot.map(image => String(image.id));
+    if (ids.length) await pool.query('DELETE FROM fil_images WHERE NOT (id = ANY($1::text[]))', [ids]);
+    else await pool.query('DELETE FROM fil_images');
   }).catch(error => console.error('[Neon PDF Images] Write failed:', error.message));
 }
 let pdfImageDbWriteQueue = Promise.resolve();
