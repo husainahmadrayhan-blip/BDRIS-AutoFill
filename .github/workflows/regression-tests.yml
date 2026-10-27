@@ -1,0 +1,25 @@
+name: Regression Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - fix/neon-pdf-image-persistence-2026-10-27
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run regression tests
+        run: npm test
