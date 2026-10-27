@@ -2824,7 +2824,7 @@ function persistFreshAuth(d){
   }catch(_){}
 }
 async function refreshUserBalance(){
-  try{const r=await fetch('/api/balance');const d=await r.json();if(r.ok&&d.ok){persistFreshAuth(d);if($('userBalance'))$('userBalance').textContent='৳'+Number(d.balance||0);}}
+  try{const r=await fetch('/api/balance');const d=await r.json();if(r.ok&&d.ok){persistFreshAuth(d);const formatted='৳'+Number(d.balance||0).toLocaleString('en-BD',{minimumFractionDigits:0,maximumFractionDigits:2});if($('userBalance'))$('userBalance').textContent=formatted;if($('dashBalance'))$('dashBalance').textContent=formatted;}}
   catch(_){}
 }
 let previewChargeInFlight = null;
