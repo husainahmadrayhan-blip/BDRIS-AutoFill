@@ -828,6 +828,7 @@ body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .side
     <button type="button" onclick="openServiceWindow('death')"><span class="nav-emoji">⚰️</span> মৃত্যু নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('birth')"><span class="nav-emoji">👶</span> জন্ম নিবন্ধন মেইক <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('pdf-image')"><span class="nav-emoji">🖼</span> PDF Image <span class="nav-arrow">›</span></button>
+    <button type="button" onclick="openServiceWindow('pdf-image');setTimeout(()=>{const q=document.getElementById('pdfImageSearch');if(q){q.value='Zone';renderPDFImageLibrary();q.focus();}},500)"><span class="nav-emoji">🗺️</span> Zone Image <span class="nav-arrow">›</span></button>
     <button type="button" onclick="openServiceWindow('pdf-history')"><span class="nav-emoji">📚</span> PDF History <span class="nav-arrow">›</span></button>
     <button type="button" onclick="closeSideMenu();openServiceWindow('data-stor')"><span class="nav-emoji">🗂️</span> নিবন্ধন ডাটা <span class="nav-arrow">↗</span></button>
     <button type="button" onclick="closeSideMenu();openServiceWindow('profile')"><span class="nav-emoji">👤</span> My Profile <span class="nav-arrow">›</span></button>
