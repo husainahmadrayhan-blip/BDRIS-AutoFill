@@ -2909,24 +2909,38 @@ async function downloadPDF() {
   return downloadInFlight;
 }
 async function printPDF(){
-  let opened=null;
+  // Reserve a tab synchronously inside the button click so mobile browsers do
+  // not treat the later PDF navigation as a download or block it as a popup.
+  let printTab=null;
   try{
-    // Generate the current certificate first; avoid printing a stale preview.
+    printTab=window.open('about:blank','_blank');
+    if(printTab){
+      try{
+        printTab.document.open();
+        printTab.document.write('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preparing certificate…</title></head><body style="font:16px sans-serif;padding:24px">PDF তৈরি হচ্ছে…</body></html>');
+        printTab.document.close();
+      }catch(_){}
+    }
     if(!pdfBlob || pdfPreviewNeedsHistorySave) await generatePDF({saveHistory:false,showPreview:false});
-    if(!pdfBlob || !pdfUrl || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
-    // Open synchronously when possible so mobile browsers allow the PDF tab.
-    opened=window.open('about:blank','_blank');
-    if(opened){
-      opened.document.title='Certificate PDF';
-      opened.location.replace(pdfUrl);
-      status('PDF নতুন ট্যাবে খোলা হচ্ছে। PDF viewer-এর Print/Share অপশন ব্যবহার করুন।','ok');
+    if(!pdfBlob || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
+    if(!pdfUrl) pdfUrl=URL.createObjectURL(pdfBlob);
+    if(printTab && !printTab.closed){
+      printTab.location.replace(pdfUrl);
+      status('PDF নতুন ট্যাবে খোলা হয়েছে। PDF viewer-এর Print আইকন বা Share → Print ব্যবহার করুন।','ok');
       return;
     }
-    // Popup blocked: open the PDF in this tab as a reliable fallback.
-    status('Popup বন্ধ আছে। একই ট্যাবে PDF খোলা হচ্ছে—সেখান থেকে Print/Share চাপুন।','ok');
-    window.location.assign(pdfUrl);
+    // Popup blockers may prevent a new tab. Keep the app open and offer a
+    // direct PDF link rather than navigating the app away and triggering a download.
+    const old=$('printFallbackLink');
+    if(old)old.remove();
+    const link=document.createElement('a');
+    link.id='printFallbackLink'; link.href=pdfUrl; link.target='_blank'; link.rel='noopener';
+    link.textContent='PDF খুলুন / Print করুন';
+    link.style.cssText='display:block;margin:12px auto;padding:14px 18px;background:#1769aa;color:#fff;border-radius:10px;text-align:center;font-weight:700;max-width:320px';
+    const host=$('certPreview')||document.body; host.appendChild(link);
+    status('Browser নতুন ট্যাব আটকে দিয়েছে। “PDF খুলুন / Print করুন” লিংকে চাপুন।','err');
   }catch(e){
-    try{if(opened&&!opened.closed)opened.close();}catch(_){}
+    try{if(printTab&&!printTab.closed)printTab.close();}catch(_){}
     status('Print-এর জন্য PDF তৈরি হয়নি: '+(e?.message||'অজানা সমস্যা'),'err');
   }
 }
