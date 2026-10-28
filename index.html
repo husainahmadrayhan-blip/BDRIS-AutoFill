@@ -2924,34 +2924,46 @@ async function downloadPDF() {
   return downloadInFlight;
 }
 async function printPDF(){
-  let printTab=null;
+  const button=document.querySelector('.pdf-action-pair .pdf, .bottom-pdf-action-pair .pdf');
+  if(button){button.disabled=true;button.dataset.oldText=button.textContent;button.textContent='PDF তৈরি হচ্ছে…';}
+  let frame=null;
   try{
-    // Open a print surface synchronously from the button click to avoid popup blocking.
-    printTab=window.open('about:blank','_blank');
+    // Do not open about:blank. On mobile Chrome it can remain a blank tab if
+    // the async PDF generation finishes after the popup's user gesture.
     if(!pdfBlob || pdfPreviewNeedsHistorySave) await generatePDF({saveHistory:false,showPreview:false});
     if(!pdfBlob || !pdfBlob.size) throw new Error('PDF ফাইল তৈরি হয়নি।');
     if(!pdfUrl) pdfUrl=URL.createObjectURL(pdfBlob);
-    if(!printTab || printTab.closed){
+    frame=document.getElementById('certificatePrintFrame');
+    if(frame)frame.remove();
+    frame=document.createElement('iframe');
+    frame.id='certificatePrintFrame';
+    frame.title='Certificate print';
+    frame.setAttribute('aria-hidden','true');
+    frame.style.cssText='position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+    frame.onload=()=>{
+      try{
+        setTimeout(()=>{
+          try{frame.contentWindow.focus();frame.contentWindow.print();}
+          catch(_){openPDFForMobilePrint();}
+        },500);
+      }catch(_){openPDFForMobilePrint();}
+    };
+    frame.src=pdfUrl;
+    document.body.appendChild(frame);
+    status('Print Dialog খোলা হচ্ছে। না খুললে “PDF Download” চাপুন।','ok');
+    function openPDFForMobilePrint(){
       const link=document.createElement('a');
-      link.href=pdfUrl;link.target='_blank';link.rel='noopener';
-      link.textContent='PDF খুলুন / Print করুন';
-      link.style.cssText='display:block;margin:12px auto;padding:14px 18px;background:#1769aa;color:#fff;border-radius:10px;text-align:center;font-weight:700;max-width:320px';
-      link.id='printFallbackLink';
-      const old=document.getElementById(link.id);if(old)old.remove();
-      ($('certPreview')||document.body).appendChild(link);
-      status('Popup বন্ধ আছে। “PDF খুলুন / Print করুন” লিংকে চাপুন।','err');return;
+      link.href=pdfUrl;link.target='_self';link.rel='noopener';
+      link.download='Birth_Certificate.pdf';
+      link.click();
+      status('এই ব্রাউজারে সরাসরি Print সমর্থিত নয়। PDF খুললে ব্রাউজারের Print বা Download ব্যবহার করুন।','err');
     }
-    const safeUrl=pdfUrl.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    printTab.document.open();
-    printTab.document.write('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Certificate Print</title><style>html,body{margin:0;height:100%;font:14px Arial,sans-serif}#bar{padding:10px;display:flex;gap:10px;justify-content:center;background:#f1f5f9}button,a{padding:10px 16px;border:0;border-radius:8px;background:#1769aa;color:#fff;font-weight:700;text-decoration:none}iframe{width:100%;height:calc(100% - 54px);border:0}@media print{#bar{display:none}iframe{height:100%;width:100%}}</style></head><body><div id="bar"><button onclick="window.frames[0].print()">Print Now</button><a id="download" href="'+safeUrl+'" download="Birth_Certificate.pdf">Download PDF</a></div><iframe id="pdf" src="'+safeUrl+'"></iframe><script>const f=document.getElementById("pdf");f.addEventListener("load",()=>setTimeout(()=>{try{window.focus();f.contentWindow.focus();f.contentWindow.print()}catch(e){}},700));<\/script></body></html>');
-    printTab.document.close();
-    status('Print dialog খোলার চেষ্টা করা হচ্ছে। প্রয়োজনে Print Now বা Download PDF চাপুন।','ok');
   }catch(e){
-    try{if(printTab&&!printTab.closed)printTab.close();}catch(_){}
     status('Print-এর জন্য PDF তৈরি হয়নি: '+(e?.message||'অজানা সমস্যা'),'err');
+  }finally{
+    if(button){button.disabled=false;button.textContent=button.dataset.oldText||'Print';delete button.dataset.oldText;}
   }
 }
-
 window.addEventListener('message',e=>{
   if(e.data?.type!=='pdf-image-editor-change')return;
   imagePositionX=Number(e.data.x)||0; imagePositionY=Number(e.data.y)||0;
