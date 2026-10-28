@@ -25,6 +25,7 @@ const os = require('os');
 
 const { launchPuppeteerBrowser } = require('./puppeteer-runtime');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const cors = require('cors');
 const { Pool } = require('pg');
 const { resolvePdfImageStorage } = require('./pdf-image-storage');
@@ -1142,6 +1143,74 @@ app.get('/api/bot/pdf-image-match',(req,res)=>{
   const imageNames=(Array.isArray(store.images)?store.images:[]).map(x=>({name:x?.name||'',hasImage:!!x?.fileName,fileExists:!!(x?.fileName&&fs.existsSync(path.join(PDF_IMAGE_DIR,path.basename(x.fileName))))}));
   console.warn(`[MAKE PDF IMAGE] API no match: office=${JSON.stringify(registeredOffice)} storage=${PDF_IMAGE_DIR} images=${imageNames.length} available=${imageNames.filter(x=>x.hasImage&&x.fileExists).length} names=${JSON.stringify(imageNames)}`);
   return res.json({ok:true,matched:false,image:null,registeredOffice,debug:{imageNames:imageNames.map(x=>x.name),imageCount:imageNames.length,availableCount:imageNames.filter(x=>x.hasImage&&x.fileExists).length}});
+});
+
+// Import a prepared PDF Image bundle into the shared Neon library. The bundle
+// contains library.json plus image files; each image and saved position is
+// persisted centrally so every signed-in user sees the same library.
+function readImageZipBundle(buffer){
+  const files=new Map();
+  let eocd=-1;
+  for(let p=Math.max(0,buffer.length-65557);p<=buffer.length-22;p++){
+    if(buffer.readUInt32LE(p)===0x06054b50)eocd=p;
+  }
+  if(eocd<0)throw new Error('ZIP ফাইলটি সঠিক নয়।');
+  const count=buffer.readUInt16LE(eocd+10), centralOffset=buffer.readUInt32LE(eocd+16);
+  let p=centralOffset;
+  for(let n=0;n<count;n++){
+    if(p+46>buffer.length||buffer.readUInt32LE(p)!==0x02014b50)throw new Error('ZIP directory invalid.');
+    const method=buffer.readUInt16LE(p+10), compressedSize=buffer.readUInt32LE(p+20), nameLen=buffer.readUInt16LE(p+28), extraLen=buffer.readUInt16LE(p+30), commentLen=buffer.readUInt16LE(p+32), localOffset=buffer.readUInt32LE(p+42);
+    const name=buffer.subarray(p+46,p+46+nameLen).toString('utf8').replace(/\\/g,'/');
+    p+=46+nameLen+extraLen+commentLen;
+    if(!name||name.endsWith('/')||name.startsWith('/')||name.split('/').includes('..'))continue;
+    if(localOffset+30>buffer.length||buffer.readUInt32LE(localOffset)!==0x04034b50)continue;
+    const localNameLen=buffer.readUInt16LE(localOffset+26), localExtraLen=buffer.readUInt16LE(localOffset+28), start=localOffset+30+localNameLen+localExtraLen;
+    const packed=buffer.subarray(start,start+compressedSize);
+    let data;
+    if(method===0)data=Buffer.from(packed);
+    else if(method===8)data=zlib.inflateRawSync(packed);
+    else continue;
+    files.set(name,data);
+  }
+  return files;
+}
+app.post('/api/pdf-images/import-bundle',async(req,res)=>{
+  try{
+    if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon database প্রস্তুত নয়।'});
+    const raw=String(req.body?.dataUrl||'');
+    const match=raw.match(/^data:application\\/(?:zip|x-zip-compressed|octet-stream);base64,([A-Za-z0-9+/=]+)$/i);
+    if(!match)return res.status(400).json({ok:false,error:'ZIP ফাইল নির্বাচন করুন।'});
+    const zip=Buffer.from(match[1],'base64');
+    if(!zip.length||zip.length>18*1024*1024)return res.status(413).json({ok:false,error:'ZIP সর্বোচ্চ 18 MB হতে পারবে।'});
+    const files=readImageZipBundle(zip);
+    const libraryEntry=[...files.entries()].find(([name])=>/(?:^|\\/)library\\.json$/i.test(name));
+    if(!libraryEntry)throw new Error('ZIP-এর ভিতরে library.json পাওয়া যায়নি।');
+    const parsed=JSON.parse(libraryEntry[1].toString('utf8'));
+    if(!Array.isArray(parsed.images))throw new Error('library.json-এ images list নেই।');
+    const store=loadPDFImageLibrary(); let imported=0, skipped=0;
+    for(const old of parsed.images){
+      const name=safeImageName(old?.name); if(!name){skipped++;continue;}
+      const oldFile=path.basename(String(old.fileName||'')); let bytes=oldFile?files.get(oldFile)||files.get('pdf-images/'+oldFile):null;
+      if(!bytes&&oldFile){for(const [filePath,data] of files){if(path.basename(filePath)===oldFile){bytes=data;break;}}}
+      const existing=store.images.find(x=>x.id===String(old.id||'')||String(x.name||'').trim().toLowerCase()===name.toLowerCase());
+      const image=existing||{id:/^[a-f0-9]{16,64}$/i.test(String(old.id||''))?String(old.id):crypto.randomBytes(12).toString('hex'),name,fileName:'',mimeType:'',createdAt:Number(old.createdAt)||Date.now(),updatedAt:Date.now()};
+      image.name=name;
+      if(old.position&&['x','y','z','w','h'].every(k=>Number.isFinite(Number(old.position[k]))))image.position={x:Number(old.position.x),y:Number(old.position.y),z:Number(old.position.z),w:Number(old.position.w),h:Number(old.position.h)};
+      image.permanent=old.permanent===true||image.permanent===true;
+      if(bytes&&bytes.length&&bytes.length<=12*1024*1024){
+        const ext=String(oldFile.split('.').pop()||'').toLowerCase();
+        const mime=String(old.mimeType|| (ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg')).toLowerCase();
+        if(!['image/png','image/jpeg','image/jpg','image/webp'].includes(mime)){skipped++;continue;}
+        const safeExt=mime==='image/png'?'png':mime==='image/webp'?'webp':'jpg';
+        image.fileName=image.id+'.'+safeExt;image.mimeType=mime==='image/jpg'?'image/jpeg':mime;fs.writeFileSync(path.join(PDF_IMAGE_DIR,image.fileName),bytes);
+      }
+      image.updatedAt=Date.now();
+      if(!existing)store.images.push(image);
+      imported++;
+    }
+    if(!await savePDFImageLibraryForResponse(store,res))return;
+    return res.json({ok:true,imported,skipped,total:store.images.length,message:'Image Library ও saved positions Neon-এ সংরক্ষিত হয়েছে; সব User একই library দেখবে।'});
+  }catch(e){return res.status(400).json({ok:false,error:e.message||'ZIP import ব্যর্থ।'});}
 });
 
 app.get('/api/pdf-images', (req,res)=>{
