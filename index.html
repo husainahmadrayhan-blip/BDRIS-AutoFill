@@ -841,7 +841,7 @@ body.service-window-mode:not(.service-pdf-image):not(.service-pdf-history) .side
   </nav>
   <div class="side-card pdf-image-panel">
     <h3>🖼 PDF Image <span id="pdfImageCount" class="badge">0</span></h3><div class="pdf-image-select-label">🖋️ সীল / Image সিলেক্ট করুন</div>
-    <div class="pdf-image-add"><input id="pdfImageNameInput" type="text" placeholder="Image-এর নাম লিখুন" maxlength="120"><button type="button" onclick="addPDFImageName()">＋</button></div><input id="pdfImageSearch" type="search" placeholder="Image name search..." oninput="renderPDFImageLibrary()" style="width:100%;max-width:100%;margin:8px 0;padding:9px;border:1px solid #cbd5e1;border-radius:8px"><button type="button" class="pdf-image-github-btn" onclick="preparePDFImagesForGitHub()">📦 Prepare for GitHub</button><div class="pdf-image-github-help">Image + saved Position/Size/Zoom একসাথে project-এর <b>pdf-images</b> folder-এর জন্য export হবে। GitHub-এ ওই folder replace করে commit করুন।</div>
+    <div class="pdf-image-add"><input id="pdfImageNameInput" type="text" placeholder="Image-এর নাম লিখুন" maxlength="120"><button type="button" onclick="addPDFImageName()">＋</button></div><input id="pdfImageSearch" type="search" placeholder="Image name search..." oninput="renderPDFImageLibrary()" style="width:100%;max-width:100%;margin:8px 0;padding:9px;border:1px solid #cbd5e1;border-radius:8px"><button type="button" class="pdf-image-github-btn" onclick="preparePDFImagesForGitHub()">📦 Prepare for GitHub</button><button type="button" class="pdf-image-github-btn" onclick="document.getElementById(&quot;pdfImageBundleInput&quot;).click()">⬆️ Import Shared Image ZIP</button><input id="pdfImageBundleInput" type="file" accept=".zip,application/zip" style="display:none" onchange="importSharedPDFImageBundle(event)"><div class="pdf-image-github-help">Image + saved Position/Size/Zoom একসাথে project-এর <b>pdf-images</b> folder-এর জন্য export হবে। GitHub-এ ওই folder replace করে commit করুন।</div>
     <input id="pdfImageFileInput" type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handlePDFImageUpload(event)">
     <div id="pdfImageList" class="pdf-image-list"><div class="history-empty">Image Library লোড হচ্ছে...</div></div>
     <div id="pdfImageSelected" class="pdf-image-selected">কোনো Image নির্বাচিত হয়নি।</div>
@@ -1178,6 +1178,21 @@ async function preparePDFImagesForGitHub(){
     setTimeout(()=>URL.revokeObjectURL(url),1500);
     status('GitHub-ready bundle তৈরি হয়েছে। ZIP খুলে pdf-images folder project-এ বসিয়ে GitHub-এ commit করুন।','ok');
   }catch(e){status('GitHub bundle তৈরি হয়নি: '+e.message,'err');}
+}
+
+async function importSharedPDFImageBundle(event){
+  const file=event.target.files?.[0]; if(!file)return;
+  const button=event.target.previousElementSibling;
+  if(file.size>18*1024*1024){status('ZIP সর্বোচ্চ 18 MB হতে পারবে।','err');event.target.value='';return;}
+  if(button){button.disabled=true;button.textContent='⏳ Import হচ্ছে…';}
+  try{
+    const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('ZIP ফাইল পড়া যায়নি।'));reader.readAsDataURL(file);});
+    const response=await fetch('/api/pdf-images/import-bundle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataUrl})});
+    const result=await response.json(); if(!response.ok||!result.ok)throw new Error(result.error||'Import ব্যর্থ হয়েছে।');
+    await loadPDFImageLibrary(); status('Shared Image Library-তে '+result.imported+'টি item import হয়েছে। Saved position-ও Neon-এ সংরক্ষিত।','ok');
+    alert('Shared Image Library import সম্পন্ন. Import: '+result.imported+'; Skipped: '+result.skipped+'. এখন সব User একই Image List দেখতে পাবে.');
+  }catch(error){status('Shared Image ZIP import ব্যর্থ: '+error.message,'err');}
+  finally{event.target.value='';if(button){button.disabled=false;button.textContent='⬆️ Import Shared Image ZIP';}}
 }
 
 function normalizeOfficeImageKey(value){
