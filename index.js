@@ -1178,12 +1178,12 @@ app.post('/api/pdf-images/import-bundle',async(req,res)=>{
   try{
     if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon database প্রস্তুত নয়।'});
     const raw=String(req.body?.dataUrl||'');
-    const match=raw.match(/^data:application\\/(?:zip|x-zip-compressed|octet-stream);base64,([A-Za-z0-9+/=]+)$/i);
+    const match=raw.match(/^data:application\/(?:zip|x-zip-compressed|octet-stream);base64,([A-Za-z0-9+/=]+)$/i);
     if(!match)return res.status(400).json({ok:false,error:'ZIP ফাইল নির্বাচন করুন।'});
     const zip=Buffer.from(match[1],'base64');
     if(!zip.length||zip.length>18*1024*1024)return res.status(413).json({ok:false,error:'ZIP সর্বোচ্চ 18 MB হতে পারবে।'});
     const files=readImageZipBundle(zip);
-    const libraryEntry=[...files.entries()].find(([name])=>/(?:^|\\/)library\\.json$/i.test(name));
+    const libraryEntry=[...files.entries()].find(([name])=>/(?:^|\/)library\.json$/i.test(name));
     if(!libraryEntry)throw new Error('ZIP-এর ভিতরে library.json পাওয়া যায়নি।');
     const parsed=JSON.parse(libraryEntry[1].toString('utf8'));
     if(!Array.isArray(parsed.images))throw new Error('library.json-এ images list নেই।');
