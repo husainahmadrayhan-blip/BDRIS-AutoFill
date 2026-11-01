@@ -899,7 +899,7 @@ function initializeUserApp(){if(userAppInitialized)return;userAppInitialized=tru
 
 
 function openServiceWindow(service){
- const allowed=new Set(['birth','death','pdf-image','pdf-history','transactions','data-stor','profile','password','how-to','contact','logout']);
+ const allowed=new Set(['birth','death','pdf-image','pdf-history','transactions','data-stor','digitaldokaan','profile','password','how-to','contact','logout']);
  if(service==='balance'){openPaymentRecharge();return;}
  if(!allowed.has(service)){status('এই সার্ভিসটি এখনো এই অ্যাপে যুক্ত হয়নি।','err');return;}
  const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('service',service);window.open(url.toString(),'_blank');
@@ -910,12 +910,34 @@ function renderDashboardServiceCards(rate){
  const items=[
   {id:'birth',icon:'👶',name:'জন্ম নিবন্ধন',desc:'জন্ম নিবন্ধন কপি তৈরি করুন',accent:'#08a875',tint:'#d9f8ed',glow:'#baf5df',fast:true,meta:'সার্ভিস মূল্য',value:price,large:true},
   {id:'death',icon:'⚰️',name:'মৃত্যু নিবন্ধন',desc:'মৃত্যু নিবন্ধন কপি তৈরি করুন',accent:'#ef3158',tint:'#ffe4ea',glow:'#ffc5d4',fast:true,meta:'সার্ভিস মূল্য',value:price,large:true},
-  {id:'data-stor',icon:'🗄️',name:'নিবন্ধন ডাটা',desc:'জন্ম নিবন্ধন ডাটা সংগ্রহ',accent:'#6543ed',tint:'#ece7ff',glow:'#d8caff',meta:'সার্ভিস মূল্য',value:'৳৩০',small:true},
+  {id:'data-stor',icon:'🗄️',name:'নিবন্ধন ডাটা',desc:'পুরোনো Data Stor রেকর্ড অনুসন্ধান',accent:'#6543ed',tint:'#ece7ff',glow:'#d8caff',meta:'সার্ভিস মূল্য',value:'৳৩০',small:true},
+  {id:'digitaldokaan',icon:'🧾',name:'নিবন্ধন ডাটা',desc:'DigitalDokaan থেকে নতুন নিবন্ধন তথ্য',accent:'#0a83b7',tint:'#e0f5ff',glow:'#bde9ff',meta:'প্রতি নতুন রেকর্ড',value:'৳৪০',small:true},
   {id:'pdf-history',icon:'📖',name:'কাজের হিস্টোরি',desc:'আপনার সব কাজের হিস্টোরি দেখুন',accent:'#1479e8',tint:'#e1f3ff',glow:'#d1edff',meta:'সার্ভিস মূল্য',value:'হিস্টোরি',small:true},
   {id:'balance',icon:'💰',name:'ব্যালেন্স রিচার্জ',desc:'নিরাপদে অ্যাকাউন্ট রিচার্জ করুন',accent:'#ff7900',tint:'#fff0d9',glow:'#ffe3a9',meta:'সার্ভিস মূল্য',value:'অটো রিচার্জ',small:true}
  ];
  target.innerHTML=items.map(s=>'<article class="dashboard-service-card '+(s.large?'dashboard-service-card-large':'dashboard-service-card-small')+'" style="--service-accent:'+s.accent+';--service-tint:'+s.tint+';--service-glow:'+s.glow+'">'+(s.fast?'<span class="fast-tag">⚡ Fast</span>':'')+'<span class="dashboard-service-icon">'+s.icon+'</span><h4>'+s.name+'</h4><p>'+s.desc+'</p><div class="dashboard-service-footer"><span class="dashboard-rate">'+s.meta+'<strong>'+s.value+'</strong></span><button class="dashboard-open-service" type="button" aria-label="Open '+s.name+'" onclick="openServiceWindow(\''+s.id+'\')">→</button></div></article>').join('');
 }
+
+function renderDigitalDokaanWindow(){
+ document.body.classList.add('service-data-stor');let root=document.getElementById('digitalDokaanWindow');if(!root){root=document.createElement('div');root.id='digitalDokaanWindow';document.body.appendChild(root);}
+ root.innerHTML='<div class="ds-wrap"><div class="ds-head"><div><h2 style="margin:0 0 5px">🧾 DigitalDokaan নিবন্ধন ডাটা</h2><div style="color:#5d718c">নাম দিয়ে খুঁজুন। নতুন রেকর্ড কিনতে ৳৪০ লাগবে। আগে কেনা রেকর্ডে আবার চার্জ হবে না।</div></div><button class="ds-muted" onclick="window.close()">✕ বন্ধ করুন</button></div><div class="ds-card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><strong>বর্তমান ব্যালেন্স: <span id="ddBalance">লোড হচ্ছে…</span></strong><span id="ddTotal" style="color:#5d718c"></span></div><form id="ddSearchForm" class="ds-form" style="margin-top:15px"><div><label for="ddBn">বাংলা নাম</label><input id="ddBn" maxlength="200" placeholder="বাংলা নাম"></div><div><label for="ddEn">English Name</label><input id="ddEn" maxlength="200" placeholder="English name"></div><div><label for="ddGender">Gender</label><select id="ddGender"><option value="">সব</option><option value="Male">Male</option><option value="Female">Female</option></select></div><div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap"><button class="ds-primary" type="submit">🔍 Search DigitalDokaan</button><button class="ds-muted" type="button" id="ddClear">Clear</button></div></form><div id="ddMessage" class="ds-status">বাংলা অথবা ইংরেজি নাম লিখে Search করুন।</div></div><div class="ds-card"><div id="ddResults"></div></div></div>';
+ const msg=t=>{const e=document.getElementById('ddMessage');if(e)e.textContent=t;};
+ const request=async(u,o={})=>{const r=await fetch(u,o),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request failed');return d;};
+ const balance=n=>{document.getElementById('ddBalance').textContent='৳'+Number(n||0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2});};
+ const esc=v=>escHtml(v);
+ async function search(){const bn=document.getElementById('ddBn').value.trim(),en=document.getElementById('ddEn').value.trim(),gender=document.getElementById('ddGender').value;if(!bn&&!en){msg('বাংলা অথবা ইংরেজি নাম লিখুন।');return;}msg('DigitalDokaan-এ অনুসন্ধান চলছে…');document.getElementById('ddResults').innerHTML='';
+  try{const p=new URLSearchParams({bn,en,gender}),d=await request('/api/digitaldokaan/search?'+p.toString());document.getElementById('ddTotal').textContent='মোট ফলাফল: '+d.total;if(!d.results.length){msg('কোনো রেকর্ড পাওয়া যায়নি।');return;}msg(d.total+'টি রেকর্ড পাওয়া গেছে।');document.getElementById('ddResults').innerHTML=d.results.map(r=>'<div class="ds-result" data-uniq-id="'+esc(r.uniqId)+'"><div class="ds-result-head"><div><strong>'+esc(r.bn||'নাম নেই')+'</strong><div>'+esc(r.en||'')+'</div><div style="color:#5d718c;font-size:13px">DOB: '+esc(r.dob)+' · Gender: '+esc(r.gender||'')+'</div></div><button class="'+(r.alreadyPurchased?'ds-muted':'ds-primary')+'" type="button" onclick="digitalDokaanPurchase(\''+esc(r.uniqId)+'\','+r.alreadyPurchased+')">'+(r.alreadyPurchased?'দেখুন / কপি':'🛒 কিনুন ৳৪০')+'</button></div></div>').join('');
+  }catch(e){msg(e.message||'Search ব্যর্থ হয়েছে।');}}
+ window.digitalDokaanPurchase=async(uniqId,already)=>{const card=document.querySelector('#digitalDokaanWindow .ds-result[data-uniq-id="'+CSS.escape(uniqId)+'"]'),btn=card?.querySelector('button');if(btn)btn.disabled=true;try{
+  const d=already?await request('/api/digitaldokaan/records/'+encodeURIComponent(uniqId)):await request('/api/digitaldokaan/records/'+encodeURIComponent(uniqId)+'/purchase',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});if(d.balance!==undefined)balance(d.balance);const r=d.record||{};
+  const full='নিবন্ধন নং: '+(r.ubrn||'')+'\nনাম (ইংরেজি): '+(r.personNameEn||'')+'\nনাম (বাংলা): '+(r.personNameBn||'')+'\nজন্মতারিখ: '+(r.personBirthDate||'')+'\nলিঙ্গ: '+(r.gender||'')+'\nবাবার নাম (ইংরেজি): '+(r.fatherNameEn||'')+'\nবাবার নাম (বাংলা): '+(r.fatherNameBn||'')+'\nমায়ের নাম (ইংরেজি): '+(r.motherNameEn||'')+'\nমায়ের নাম (বাংলা): '+(r.motherNameBn||'');
+  const box=document.createElement('div');box.className='ds-full-record';box.style.cssText='margin-top:12px;padding:12px;border:1px solid #b8e2c5;border-radius:10px;background:#f0fbf3;';box.innerHTML='<div style="font-weight:800;color:#176b35;margin-bottom:8px">✓ '+(d.alreadyPurchased?'আগে কেনা রেকর্ড':'Purchase সফল, ৳৪০ চার্জ হয়েছে')+'</div><pre style="white-space:pre-wrap;word-break:break-word;font:inherit;margin:0 0 10px">'+esc(full)+'</pre><button type="button" class="ds-primary">📋 কপি করুন</button>';
+  box.querySelector('button').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(full);msg('রেকর্ড কপি হয়েছে।');}catch(e){msg('কপি করা যায়নি। রেকর্ড সিলেক্ট করে কপি করুন।');}});card?.appendChild(box);msg(d.alreadyPurchased?'আগে কেনা রেকর্ড দেখানো হয়েছে। নতুন চার্জ হয়নি।':'Purchase সফল হয়েছে।');
+ }catch(e){msg(e.message||'Purchase ব্যর্থ হয়েছে।');}finally{if(btn)btn.disabled=false;}};
+ document.getElementById('ddSearchForm').addEventListener('submit',e=>{e.preventDefault();search();});document.getElementById('ddClear').addEventListener('click',()=>{document.getElementById('ddSearchForm').reset();document.getElementById('ddResults').innerHTML='';document.getElementById('ddTotal').textContent='';msg('বাংলা অথবা ইংরেজি নাম লিখুন।');});
+ request('/api/digitaldokaan/stats').then(d=>balance(d.balance)).catch(e=>msg(e.message||'DigitalDokaan service load হয়নি।'));
+}
+
 function renderDataStorWindow(){
  document.body.classList.add('service-data-stor');
  let root=document.getElementById('dataStorWindow');if(!root){root=document.createElement('div');root.id='dataStorWindow';document.body.appendChild(root);}
@@ -963,6 +985,7 @@ function applyServiceWindowMode(){
  if(service==='birth'||service==='death'){const dash=document.getElementById('premiumDashboard');if(dash)dash.style.display='none';setRegistrationMode(service);setTimeout(()=>document.getElementById('personalSection')?.scrollIntoView({block:'start'}),180);return;}
  if(service==='pdf-image'||service==='pdf-history'){document.body.classList.add(service==='pdf-image'?'service-pdf-image':'service-pdf-history');document.querySelector('.workspace-grid>.side-bar')?.classList.add('open');setTimeout(()=>document.querySelector(service==='pdf-image'?'.pdf-image-panel':'.history-panel')?.scrollIntoView({block:'start'}),180);return;}
  if(service==='data-stor'){renderDataStorWindow();return;}
+ if(service==='digitaldokaan'){renderDigitalDokaanWindow();return;}
  if(['profile','password','how-to','contact','logout'].includes(service)){renderAccountServiceWindow(service);return;}
  if(service==='transactions'){document.body.classList.add('service-transactions');const dash=document.getElementById('premiumDashboard');if(dash)dash.style.display='block';setTimeout(()=>document.querySelector('#premiumDashboard .dashboard-history-grid')?.scrollIntoView({block:'start'}),180);}
 }
