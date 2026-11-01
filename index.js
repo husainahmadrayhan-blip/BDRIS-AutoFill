@@ -957,38 +957,41 @@ app.get('/api/digitaldokaan/records/:uniqId',requireUserAuth,async(req,res)=>{
  }catch(e){console.error('[DigitalDokaan] record read failed:',e.message);res.status(503).json({ok:false,error:'রেকর্ড লোড হয়নি।'});}
 });
 app.post('/api/digitaldokaan/records/:uniqId/purchase',requireUserAuth,async(req,res)=>{
- const user=dataStorUser(req,res);if(!user)return;if(!dataStorSameOrigin(req))return res.status(403).json({ok:false,error:'অবৈধ অনুরোধ।'});
+ const user=dataStorUser(req,res);if(!user)return;
+ if(!dataStorSameOrigin(req))return res.status(403).json({ok:false,error:'অবৈধ অনুরোধ।'});
  const uniqId=String(req.params.uniqId||'');if(!/^\d{1,15}$/.test(uniqId))return res.status(400).json({ok:false,error:'uniq_id সঠিক নয়।'});
  if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
  if(!allowDataStorAction(user.id,'digitaldokaan-purchase',10))return res.status(429).json({ok:false,error:'অনেক বেশি Purchase request হয়েছে।'});
- const client=await pool.connect();let providerPurchased=false;
+ const client=await pool.connect();let providerPurchased=false,transactionOpen=false;
  try{
-  await client.query('BEGIN');const b=await client.query('SELECT balance,enabled,username FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);
-  if(!b.rowCount||!b.rows[0].enabled){await client.query('ROLLBACK');return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});}
-  const prior=await client.query('SELECT r.* FROM digitaldokaan_records r JOIN digitaldokaan_purchases p ON p.record_id=r.id WHERE p.user_id=$1 AND r.uniq_id=$2',[String(user.id),uniqId]);
-  if(prior.rowCount){await client.query('COMMIT');const r=prior.rows[0];return res.json({ok:true,alreadyPurchased:true,charged:0,balance:Number(b.rows[0].balance),record:{ubrn:r.ubrn,personNameEn:r.person_name_en,personNameBn:r.person_name_bn,personBirthDate:r.dob_text,gender:r.gender,fatherNameEn:r.father_name_en,fatherNameBn:r.father_name_bn,motherNameEn:r.mother_name_en,motherNameBn:r.mother_name_bn}});}
-  const initial=Number(b.rows[0].balance);if(!Number.isFinite(initial)||initial<DIGITALDOKAAN_PRICE){await client.query('ROLLBACK');return res.status(402).json({ok:false,error:'নতুন রেকর্ড কিনতে AutoFill ব্যালেন্সে কমপক্ষে ৳৪০ থাকতে হবে।',balance:initial,required:DIGITALDOKAAN_PRICE});}
-  await client.query('ROLLBACK');
-  const form=new URLSearchParams({uniqId});const upstream=await digitalDokaanFetch('/brnData/buy-test.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',Origin:DIGITALDOKAAN_BASE},body:form.toString()});
-  const payload=await upstream.json().catch(()=>({}));if(!upstream.ok||payload.status!=='success'||!payload.data)return res.status(502).json({ok:false,error:'DigitalDokaan Purchase সফল হয়নি। AutoFill ব্যালেন্স কাটা হয়নি।'});
+  await client.query('BEGIN');transactionOpen=true;
+  const locked=await client.query('SELECT balance,enabled,username FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);
+  if(!locked.rowCount||!locked.rows[0].enabled){await client.query('ROLLBACK');transactionOpen=false;return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});}
+  const previous=await client.query('SELECT r.* FROM digitaldokaan_records r JOIN digitaldokaan_purchases p ON p.record_id=r.id WHERE p.user_id=$1 AND r.uniq_id=$2',[String(user.id),uniqId]);
+  if(previous.rowCount){await client.query('COMMIT');transactionOpen=false;const r=previous.rows[0];dataStorNoStore(res);return res.json({ok:true,alreadyPurchased:true,charged:0,balance:Number(locked.rows[0].balance),record:{ubrn:r.ubrn,personNameEn:r.person_name_en,personNameBn:r.person_name_bn,personBirthDate:r.dob_text,gender:r.gender,fatherNameEn:r.father_name_en,fatherNameBn:r.father_name_bn,motherNameEn:r.mother_name_en,motherNameBn:r.mother_name_bn}});}
+  const current=Number(locked.rows[0].balance);
+  if(!Number.isFinite(current)||current<DIGITALDOKAAN_PRICE){await client.query('ROLLBACK');transactionOpen=false;dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড কিনতে AutoFill ব্যালেন্সে কমপক্ষে ৳৪০ থাকতে হবে।',balance:current,required:DIGITALDOKAAN_PRICE});}
+  // Keep the user's wallet row locked during the provider call to serialize purchases.
+  const form=new URLSearchParams({uniqId});
+  const upstream=await digitalDokaanFetch('/brnData/buy-test.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',Origin:DIGITALDOKAAN_BASE},body:form.toString()});
+  const payload=await upstream.json().catch(()=>({}));
+  if(!upstream.ok||payload.status!=='success'||!payload.data){await client.query('ROLLBACK');transactionOpen=false;return res.status(502).json({ok:false,error:'DigitalDokaan Purchase সফল হয়নি। AutoFill ব্যালেন্স কাটা হয়নি।'});}
   providerPurchased=true;const record=normalizeDigitalDokaanRecord(payload,uniqId);
-  await client.query('BEGIN');const latest=await client.query('SELECT balance,enabled,username FROM fil_users WHERE id=$1 FOR UPDATE',[String(user.id)]);
-  if(!latest.rowCount||!latest.rows[0].enabled)throw new Error('USER_UNAVAILABLE_AFTER_PROVIDER_PURCHASE');
-  const dup=await client.query('SELECT r.* FROM digitaldokaan_records r JOIN digitaldokaan_purchases p ON p.record_id=r.id WHERE p.user_id=$1 AND r.uniq_id=$2',[String(user.id),uniqId]);
-  if(dup.rowCount){await client.query('COMMIT');return res.json({ok:true,alreadyPurchased:true,charged:0,balance:Number(latest.rows[0].balance),record:{ubrn:dup.rows[0].ubrn,personNameEn:dup.rows[0].person_name_en,personNameBn:dup.rows[0].person_name_bn,personBirthDate:dup.rows[0].dob_text,gender:dup.rows[0].gender,fatherNameEn:dup.rows[0].father_name_en,fatherNameBn:dup.rows[0].father_name_bn,motherNameEn:dup.rows[0].mother_name_en,motherNameBn:dup.rows[0].mother_name_bn}});}
-  const current=Number(latest.rows[0].balance);if(current<DIGITALDOKAAN_PRICE)throw new Error('BALANCE_CHANGED_AFTER_PROVIDER_PURCHASE');
-  const saved=await client.query(`INSERT INTO digitaldokaan_records(uniq_id,ubrn,dob_text,person_name_en,person_name_bn,gender,father_name_en,father_name_bn,mother_name_en,mother_name_bn,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(uniq_id) DO UPDATE SET uniq_id=EXCLUDED.uniq_id RETURNING id`,[uniqId,record.ubrn,record.dobText,record.personNameEn,record.personNameBn,record.gender,record.fatherNameEn,record.fatherNameBn,record.motherNameEn,record.motherNameBn,Date.now()]);
-  const next=Math.round((current-DIGITALDOKAAN_PRICE)*100)/100,now=Date.now(),rid=saved.rows[0].id;
+  const insertSql='INSERT INTO digitaldokaan_records(uniq_id,ubrn,dob_text,person_name_en,person_name_bn,gender,father_name_en,father_name_bn,mother_name_en,mother_name_bn,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(uniq_id) DO UPDATE SET uniq_id=EXCLUDED.uniq_id RETURNING id';
+  const saved=await client.query(insertSql,[uniqId,record.ubrn,record.dobText,record.personNameEn,record.personNameBn,record.gender,record.fatherNameEn,record.fatherNameBn,record.motherNameEn,record.motherNameBn,Date.now()]);
+  const next=Math.round((current-DIGITALDOKAAN_PRICE)*100)/100,now=Date.now(),recordId=saved.rows[0].id;
   await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
   await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),'digitaldokaan:'+uniqId,DIGITALDOKAAN_PRICE,next,now]);
-  await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),String(latest.rows[0].username||user.username),'digitaldokaan_purchase',-DIGITALDOKAAN_PRICE,next,'DigitalDokaan purchase uniqId='+uniqId,now]);
-  await client.query('INSERT INTO digitaldokaan_purchases(user_id,record_id,price,provider_cost,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),rid,DIGITALDOKAAN_PRICE,35,now]);
-  await client.query('COMMIT');user.balance=next;dataStorNoStore(res);
+  await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),String(locked.rows[0].username||user.username),'digitaldokaan_purchase',-DIGITALDOKAAN_PRICE,next,'DigitalDokaan purchase uniqId='+uniqId,now]);
+  await client.query('INSERT INTO digitaldokaan_purchases(user_id,record_id,price,provider_cost,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),recordId,DIGITALDOKAAN_PRICE,35,now]);
+  await client.query('COMMIT');transactionOpen=false;user.balance=next;dataStorNoStore(res);
   return res.json({ok:true,alreadyPurchased:false,charged:DIGITALDOKAAN_PRICE,balance:next,record:{ubrn:record.ubrn,personNameEn:record.personNameEn,personNameBn:record.personNameBn,personBirthDate:record.dobText,gender:record.gender,fatherNameEn:record.fatherNameEn,fatherNameBn:record.fatherNameBn,motherNameEn:record.motherNameEn,motherNameBn:record.motherNameBn}});
- }catch(e){await client.query('ROLLBACK').catch(()=>{});console.error('[DigitalDokaan] accounting failed:',String(e.message||e));return res.status(providerPurchased?503:502).json({ok:false,providerPurchased,error:providerPurchased?'Provider Purchase হয়েছে, কিন্তু AutoFill হিসাব সম্পন্ন হয়নি। Admin-এর সঙ্গে যোগাযোগ করুন।':'Purchase ব্যর্থ হয়েছে; AutoFill ব্যালেন্স কাটা হয়নি।'});}
- finally{client.release();}
+ }catch(e){
+  if(transactionOpen)await client.query('ROLLBACK').catch(()=>{});
+  console.error('[DigitalDokaan] accounting failed:',String(e.message||e));
+  return res.status(providerPurchased?503:502).json({ok:false,providerPurchased,error:providerPurchased?'Provider Purchase হয়েছে, কিন্তু AutoFill হিসাব সম্পন্ন হয়নি। Admin-এর সঙ্গে যোগাযোগ করুন।':'Purchase ব্যর্থ হয়েছে; AutoFill ব্যালেন্স কাটা হয়নি।'});
+ }finally{client.release();}
 });
-
 app.get('/api/data-stor/stats',requireUserAuth,async(req,res)=>{
  const user=dataStorUser(req,res);if(!user)return;if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
  try{const q=await pool.query("SELECT count(*)::int total FROM birth_records");const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)]);if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});dataStorNoStore(res);res.json({ok:true,total:Number(q.rows[0]?.total)||0,balance:Number(b.rows[0].balance)||0});}
