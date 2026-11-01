@@ -654,18 +654,18 @@ body.service-window-mode .workspace-grid>.side-bar .history-panel,body.service-w
 body.service-pdf-image .workspace-grid>.side-bar .pdf-image-panel{display:block!important}body.service-pdf-history .workspace-grid>.side-bar .history-panel{display:block!important}
 body.service-pdf-image .form-main,body.service-pdf-history .form-main,body.service-pdf-image .bottom-preview-action,body.service-pdf-history .bottom-preview-action,body.service-pdf-image .status,body.service-pdf-history .status,body.service-pdf-image .search-fields-stack,body.service-pdf-history .search-fields-stack,body.service-pdf-image .actions.top-actions,body.service-pdf-history .actions.top-actions,body.service-pdf-image #captchaArea,body.service-pdf-history #captchaArea{display:none!important}
 body.service-data-stor #appShell>*{display:none!important}
-#dataStorWindow{position:fixed;inset:0;z-index:99999;overflow:auto;background:linear-gradient(145deg,#edf7ff,#f9fbff 60%,#e7f8f2);padding:22px;box-sizing:border-box;color:#102747}
-#dataStorWindow .ds-wrap{max-width:1000px;margin:0 auto}#dataStorWindow .ds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
-#dataStorWindow .ds-card{background:#fff;border:1px solid #dbe8f6;border-radius:20px;padding:18px;box-shadow:0 8px 28px #1c4b8210;margin-bottom:16px}
-#dataStorWindow .ds-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-#dataStorWindow label{display:block;font-size:13px;color:#536987;margin-bottom:5px}
-#dataStorWindow input,#dataStorWindow select{box-sizing:border-box;width:100%;padding:12px;border:1px solid #cfdeee;border-radius:12px;background:#fff;color:#122441}
-#dataStorWindow button{border:0;border-radius:12px;padding:11px 15px;font-weight:700;cursor:pointer}
-#dataStorWindow .ds-primary{background:#0878ed;color:#fff}#dataStorWindow .ds-muted{background:#e9f1fb;color:#23405f}
-#dataStorWindow .ds-result{border:1px solid #e1eaf4;border-radius:15px;padding:14px;margin-top:12px;background:#fbfdff}
-#dataStorWindow .ds-result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-#dataStorWindow .ds-status{color:#60738c;font-size:13px;margin-top:10px;white-space:pre-wrap}
-@media(max-width:620px){#dataStorWindow{padding:12px}#dataStorWindow .ds-form{grid-template-columns:1fr}#dataStorWindow .ds-card{padding:14px}}
+#dataStorWindow,#digitalDokaanWindow{position:fixed;inset:0;z-index:99999;overflow:auto;background:linear-gradient(145deg,#edf7ff,#f9fbff 60%,#e7f8f2);padding:22px;box-sizing:border-box;color:#102747}
+#dataStorWindow,#digitalDokaanWindow .ds-wrap{max-width:1000px;margin:0 auto}#dataStorWindow,#digitalDokaanWindow .ds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+#dataStorWindow,#digitalDokaanWindow .ds-card{background:#fff;border:1px solid #dbe8f6;border-radius:20px;padding:18px;box-shadow:0 8px 28px #1c4b8210;margin-bottom:16px}
+#dataStorWindow,#digitalDokaanWindow .ds-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#dataStorWindow,#digitalDokaanWindow label{display:block;font-size:13px;color:#536987;margin-bottom:5px}
+#dataStorWindow,#digitalDokaanWindow input,#dataStorWindow,#digitalDokaanWindow select{box-sizing:border-box;width:100%;padding:12px;border:1px solid #cfdeee;border-radius:12px;background:#fff;color:#122441}
+#dataStorWindow,#digitalDokaanWindow button{border:0;border-radius:12px;padding:11px 15px;font-weight:700;cursor:pointer}
+#dataStorWindow,#digitalDokaanWindow .ds-primary{background:#0878ed;color:#fff}#dataStorWindow,#digitalDokaanWindow .ds-muted{background:#e9f1fb;color:#23405f}
+#dataStorWindow,#digitalDokaanWindow .ds-result{border:1px solid #e1eaf4;border-radius:15px;padding:14px;margin-top:12px;background:#fbfdff}
+#dataStorWindow,#digitalDokaanWindow .ds-result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+#dataStorWindow,#digitalDokaanWindow .ds-status{color:#60738c;font-size:13px;margin-top:10px;white-space:pre-wrap}
+@media(max-width:620px){#dataStorWindow,#digitalDokaanWindow{padding:12px}#dataStorWindow,#digitalDokaanWindow .ds-form{grid-template-columns:1fr}#dataStorWindow,#digitalDokaanWindow .ds-card{padding:14px}}
 body.service-transactions #premiumDashboard{display:block!important}body.service-transactions #premiumDashboard .dashboard-summary,body.service-transactions #premiumDashboard>.dashboard-heading,body.service-transactions #premiumDashboard .dashboard-service-grid,body.service-transactions #premiumDashboard .dashboard-history-grid .dashboard-panel:not(:first-child){display:none!important}body.service-transactions #premiumDashboard .dashboard-history-grid{grid-template-columns:1fr}
 @media(max-width:700px){#dashboardServices.dashboard-service-grid{grid-template-columns:1fr}#dashboardServices .dashboard-service-card{min-height:200px;padding:16px}}
 </style>
