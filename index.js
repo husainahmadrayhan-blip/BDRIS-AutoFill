@@ -916,11 +916,14 @@ function digitalDokaanCookies(session) {
 async function digitalDokaanLogin() {
   const cfg = digitalDokaanCredentials();
   const jar = new Map();
-  const loginPageUrl = DIGITALDOKAAN_BASE + '/pages/login.php';
+  const configuredToken = String(process.env.DIGITALDOKAAN_URL_TOKEN || '').trim();
+  if (!configuredToken) {
+    throw new Error('DigitalDokaan URL token not configured');
+  }
 
-  // The live site issues its PHP session and CSRF token on the actual login page.
-  // Do not bootstrap through /secure-login: that route redirects to itself on
-  // the provider and does not issue cookie_for_url_token for this account flow.
+  // The provider requires its tokenized secure-login page BEFORE authentication.
+  // After a successful login it redirects to the plain /secure-login URL.
+  const loginPageUrl = DIGITALDOKAAN_BASE + '/secure-login?url_token=' + encodeURIComponent(configuredToken);
   const loginPage = await fetch(loginPageUrl, {
     method: 'GET',
     headers: { Accept: 'text/html,application/xhtml+xml' },
@@ -928,25 +931,30 @@ async function digitalDokaanLogin() {
     signal: AbortSignal.timeout(20000)
   });
   digitalDokaanSetCookies(loginPage.headers, jar);
-  if (!loginPage.ok) throw new Error('DigitalDokaan login page unavailable');
+  if (!loginPage.ok) throw new Error('DigitalDokaan tokenized login page unavailable');
   const pageHtml = await loginPage.text();
   const csrf = pageHtml.match(/name=["']csrf_token["'][^>]*value=["']([^"']+)["']/i)?.[1]
     || pageHtml.match(/value=["']([^"']+)["'][^>]*name=["']csrf_token["']/i)?.[1];
   if (!csrf) {
-    console.warn('[DigitalDokaan] login page did not contain csrf_token', JSON.stringify({
+    console.warn('[DigitalDokaan] tokenized login page did not contain csrf_token', JSON.stringify({
       status: loginPage.status,
       contentType: loginPage.headers.get('content-type') || '',
-      cookieNames: [...jar.keys()]
+      finalPath: (() => { try { return new URL(loginPage.url).pathname; } catch (_) { return ''; } })(),
+      cookieNames: [...jar.keys()],
+      hasConfiguredUrlToken: true
     }));
     throw new Error('DigitalDokaan CSRF token unavailable');
   }
 
+  // Preserve the stable URL token in the cookie when the provider has not
+  // already supplied its own cookie, and keep the same PHP session throughout.
+  if (!jar.has('cookie_for_url_token')) jar.set('cookie_for_url_token', configuredToken);
   const form = new URLSearchParams({
     csrf_token: csrf,
     email: cfg.email,
     password: cfg.password
   });
-  const response = await fetch(loginPageUrl, {
+  const response = await fetch(DIGITALDOKAAN_BASE + '/pages/login.php', {
     method: 'POST',
     redirect: 'follow',
     headers: {
@@ -972,7 +980,7 @@ async function digitalDokaanLogin() {
   }
 
   const phpSession = jar.get('PHPSESSID') || '';
-  const urlToken = jar.get('cookie_for_url_token') || '';
+  const urlToken = jar.get('cookie_for_url_token') || configuredToken;
   if (!phpSession || !urlToken) {
     console.warn('[DigitalDokaan] login succeeded but session cookies incomplete', JSON.stringify({
       hasPhpSession: !!phpSession,
@@ -981,36 +989,18 @@ async function digitalDokaanLogin() {
     }));
     throw new Error('DigitalDokaan authenticated session cookies unavailable');
   }
-  const serviceUrl = DIGITALDOKAAN_BASE + '/secure-login?url_token=' + encodeURIComponent(urlToken);
-  const serviceEntry = await fetch(serviceUrl, {
-    method: 'GET',
-    redirect: 'follow',
-    headers: {
-      Accept: 'text/html,application/xhtml+xml',
-      Referer: loginPageUrl,
-      Cookie: digitalDokaanCookieHeader(jar)
-    },
-    signal: AbortSignal.timeout(20000)
-  });
-  digitalDokaanSetCookies(serviceEntry.headers, jar);
-  if (!serviceEntry.ok) {
-    console.warn('[DigitalDokaan] tokenized service entry failed', JSON.stringify({
-      status: serviceEntry.status,
-      cookieNames: [...jar.keys()]
-    }));
-    throw new Error('DigitalDokaan service link could not be opened');
-  }
-  const finalServiceUrl = serviceEntry.url || serviceUrl;
-  console.info('[DigitalDokaan] tokenized service entry verified', JSON.stringify({
-    status: serviceEntry.status,
-    finalPath: (() => { try { return new URL(finalServiceUrl).pathname; } catch (_) { return ''; } })(),
-    hasUrlToken: !!urlToken,
-    cookieNames: [...jar.keys()]
+  const serviceUrl = DIGITALDOKAAN_BASE + '/secure-login';
+  console.info('[DigitalDokaan] login session established', JSON.stringify({
+    status: response.status,
+    providerStatus: String(payload.status || ''),
+    postLoginPath: (() => { try { return new URL(response.url || serviceUrl).pathname; } catch (_) { return '/secure-login'; } })(),
+    cookieNames: [...jar.keys()],
+    hasUrlToken: !!urlToken
   }));
   return {
     urlToken,
-    phpSession: jar.get('PHPSESSID') || phpSession,
-    serviceUrl: finalServiceUrl,
+    phpSession,
+    serviceUrl,
     cookieHeader: digitalDokaanCookieHeader(jar),
     createdAt: Date.now()
   };
