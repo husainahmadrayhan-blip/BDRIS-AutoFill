@@ -928,9 +928,20 @@ async function digitalDokaanLogin() {
     digitalDokaanSetCookies(response.headers, jar);
     urlToken = jar.get('cookie_for_url_token') || urlToken || digitalDokaanTokenFromUrl(currentUrl);
     const location = response.headers.get('location') || '';
+    const redirectUrl = location ? new URL(location, currentUrl) : null;
+    console.info('[DigitalDokaan] bootstrap response', JSON.stringify({
+      hop,
+      status: response.status,
+      path: new URL(currentUrl).pathname,
+      contentType: response.headers.get('content-type') || '',
+      redirectPath: redirectUrl ? redirectUrl.pathname : '',
+      redirectQueryKeys: redirectUrl ? [...redirectUrl.searchParams.keys()] : [],
+      redirectHasUrlToken: redirectUrl ? redirectUrl.searchParams.has('url_token') : false,
+      cookieNames: [...jar.keys()]
+    }));
     if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
     redirects++;
-    const nextUrl = new URL(location, currentUrl);
+    const nextUrl = redirectUrl;
     urlToken = nextUrl.searchParams.get('url_token') || urlToken;
     currentUrl = nextUrl.toString();
   }
@@ -944,6 +955,26 @@ async function digitalDokaanLogin() {
       signal: AbortSignal.timeout(15000)
     });
     digitalDokaanSetCookies(probe.headers, jar);
+    const probeLocation = probe.headers.get('location') || '';
+    let probeRedirectPath = '';
+    let probeRedirectQueryKeys = [];
+    try {
+      if (probeLocation) {
+        const parsed = new URL(probeLocation, probeUrl);
+        probeRedirectPath = parsed.pathname;
+        probeRedirectQueryKeys = [...parsed.searchParams.keys()];
+      }
+    } catch (_) {}
+    console.info('[DigitalDokaan] bootstrap probe', JSON.stringify({
+      status: probe.status,
+      path: new URL(probeUrl).pathname,
+      responseUrlPath: (() => { try { return new URL(probe.url || probeUrl).pathname; } catch (_) { return ''; } })(),
+      contentType: probe.headers.get('content-type') || '',
+      redirectPath: probeRedirectPath,
+      redirectQueryKeys: probeRedirectQueryKeys,
+      redirectHasUrlToken: probeRedirectQueryKeys.includes('url_token'),
+      cookieNames: [...jar.keys()]
+    }));
     urlToken = jar.get('cookie_for_url_token') || urlToken || digitalDokaanTokenFromUrl(probe.url || probeUrl);
     if (urlToken) jar.set('cookie_for_url_token', urlToken);
     phpSession = jar.get('PHPSESSID') || '';
