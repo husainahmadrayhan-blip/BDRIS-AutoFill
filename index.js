@@ -1108,7 +1108,7 @@ app.post('/api/digitaldokaan/records/:uniqId/purchase',requireUserAuth,async(req
 });
 app.get('/api/data-stor/stats',requireUserAuth,async(req,res)=>{
  const user=dataStorUser(req,res);if(!user)return;if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
- try{const q=await pool.query("SELECT count(*)::int total FROM birth_records");const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)]);if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});dataStorNoStore(res);res.json({ok:true,total:Number(q.rows[0]?.total)||0,balance:Number(b.rows[0].balance)||0});}
+ try{const q=await pool.query("SELECT count(*)::int total FROM birth_records");const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)]);if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});dataStorNoStore(res);res.json({ok:true,total:Number(q.rows[0]?.total)||0,balance:Number(b.rows[0].balance)||0,price:await getDigitalDokaanPrice()});}
  catch(e){console.error('[Data Stor] stats failed:',e.message);res.status(503).json({ok:false,error:'Data Stor statistics লোড করা যায়নি।'});}
 });
 app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
