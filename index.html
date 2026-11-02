@@ -965,13 +965,13 @@ function openServiceWindow(service){
  if(!allowed.has(service)){status('এই সার্ভিসটি এখনো এই অ্যাপে যুক্ত হয়নি।','err');return;}
  const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('service',service);window.open(url.toString(),'_blank');
 }
-function renderDashboardServiceCards(rate){
+function renderDashboardServiceCards(rate,dataStorPrice=40){
  const target=document.getElementById('dashboardServices');if(!target)return;
  const price='৳'+(Number(rate)||0).toLocaleString('en-BD',{minimumFractionDigits:0,maximumFractionDigits:2})+' টাকা';
  const items=[
   {id:'birth',icon:'👶',name:'জন্ম নিবন্ধন',desc:'জন্ম নিবন্ধন কপি তৈরি করুন',accent:'#08a875',tint:'#d9f8ed',glow:'#baf5df',fast:true,meta:'সার্ভিস মূল্য',value:price,large:true},
   {id:'death',icon:'⚰️',name:'মৃত্যু নিবন্ধন',desc:'মৃত্যু নিবন্ধন কপি তৈরি করুন',accent:'#ef3158',tint:'#ffe4ea',glow:'#ffc5d4',fast:true,meta:'সার্ভিস মূল্য',value:price,large:true},
-  {id:'data-stor',icon:'🗄️',name:'নিবন্ধন ডাটা',desc:'রেকর্ড অনুসন্ধান ও বিস্তারিত তথ্য',accent:'#6543ed',tint:'#ece7ff',glow:'#d8caff',meta:'প্রতি নতুন রেকর্ড',value:'৳৪০',small:true},
+  {id:'data-stor',icon:'🗄️',name:'নিবন্ধন ডাটা',desc:'রেকর্ড অনুসন্ধান ও বিস্তারিত তথ্য',accent:'#6543ed',tint:'#ece7ff',glow:'#d8caff',meta:'প্রতি নতুন রেকর্ড',value:'৳'+Number(dataStorPrice||40).toLocaleString('en-BD',{minimumFractionDigits:0,maximumFractionDigits:2}),small:true},
   
   {id:'pdf-history',icon:'📖',name:'কাজের হিস্টোরি',desc:'আপনার সব কাজের হিস্টোরি দেখুন',accent:'#1479e8',tint:'#e1f3ff',glow:'#d1edff',meta:'সার্ভিস মূল্য',value:'হিস্টোরি',small:true},
   {id:'balance',icon:'💰',name:'ব্যালেন্স রিচার্জ',desc:'নিরাপদে অ্যাকাউন্ট রিচার্জ করুন',accent:'#ff7900',tint:'#fff0d9',glow:'#ffe3a9',meta:'সার্ভিস মূল্য',value:'অটো রিচার্জ',small:true}
@@ -1151,13 +1151,13 @@ async function loadPremiumDashboard(){
  const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const list=(items,kind)=>{if(!items?.length)return '<p>এখনো কোনো রেকর্ড নেই।</p>';return items.slice(0,8).map(x=>{const label=kind==='recharge'?(x.method||'Recharge'):(kind==='work'?(x.service||'Birth Certificate PDF'):(x.note||x.type||'Balance transaction'));const date=x.createdAt?new Date(Number(x.createdAt)).toLocaleString('bn-BD'):'সময় নেই';return '<div class="dash-row"><span><strong>'+safe(label)+'</strong><small>'+safe(date)+(kind==='recharge'?' · '+safe(x.status||'pending'):'')+'</small></span><span class="dash-amount">'+fmt(x.amount)+'</span></div>'}).join('')};
  try{
-  const [sr,hr,br]=await Promise.all([fetch('/api/services'),fetch('/api/account/history'),fetch('/api/balance')]);
-  const services=await sr.json(),history=await hr.json(),balance=await br.json();
+  const [sr,hr,br,dsr]=await Promise.all([fetch('/api/services'),fetch('/api/account/history'),fetch('/api/balance'),fetch('/api/data-stor/stats')]);
+  const services=await sr.json(),history=await hr.json(),balance=await br.json(),dataStor=await dsr.json().catch(()=>({}));
   if(!sr.ok||!services.ok)throw Error(services.error||'সার্ভিস লোড হয়নি');
   document.getElementById('dashBalance').textContent=fmt(balance.balance??services.balance);
   document.getElementById('dashServiceCount').textContent=String(services.services.length);
   document.getElementById('dashWorkCount').textContent=String(history.work?.length||0);
-  renderDashboardServiceCards(services.services[0]?.rate ?? 0);
+  renderDashboardServiceCards(services.services[0]?.rate ?? 0,dataStor.price ?? 40);
   document.getElementById('dashTransactions').innerHTML=list(history.transactions,'transaction');
   document.getElementById('dashRecharges').innerHTML=list(history.recharges,'recharge');
   document.getElementById('dashWork').innerHTML=list(history.work,'work');
