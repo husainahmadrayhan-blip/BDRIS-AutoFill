@@ -981,9 +981,36 @@ async function digitalDokaanLogin() {
     }));
     throw new Error('DigitalDokaan authenticated session cookies unavailable');
   }
+  const serviceUrl = DIGITALDOKAAN_BASE + '/secure-login?url_token=' + encodeURIComponent(urlToken);
+  const serviceEntry = await fetch(serviceUrl, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      Referer: loginPageUrl,
+      Cookie: digitalDokaanCookieHeader(jar)
+    },
+    signal: AbortSignal.timeout(20000)
+  });
+  digitalDokaanSetCookies(serviceEntry.headers, jar);
+  if (!serviceEntry.ok) {
+    console.warn('[DigitalDokaan] tokenized service entry failed', JSON.stringify({
+      status: serviceEntry.status,
+      cookieNames: [...jar.keys()]
+    }));
+    throw new Error('DigitalDokaan service link could not be opened');
+  }
+  const finalServiceUrl = serviceEntry.url || serviceUrl;
+  console.info('[DigitalDokaan] tokenized service entry verified', JSON.stringify({
+    status: serviceEntry.status,
+    finalPath: (() => { try { return new URL(finalServiceUrl).pathname; } catch (_) { return ''; } })(),
+    hasUrlToken: !!urlToken,
+    cookieNames: [...jar.keys()]
+  }));
   return {
     urlToken,
-    phpSession,
+    phpSession: jar.get('PHPSESSID') || phpSession,
+    serviceUrl: finalServiceUrl,
     cookieHeader: digitalDokaanCookieHeader(jar),
     createdAt: Date.now()
   };
@@ -991,7 +1018,7 @@ async function digitalDokaanLogin() {
 async function digitalDokaanSession(){const s=digitalDokaanSessions.get('active');if(s&&Date.now()-s.createdAt<15*60*1000)return s;const next=await digitalDokaanLogin();digitalDokaanSessions.set('active',next);return next;}
 async function digitalDokaanFetch(pathname,options={}){
  let s=await digitalDokaanSession();
- const send=()=>fetch(DIGITALDOKAAN_BASE+pathname,{...options,headers:{Accept:'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest',Referer:DIGITALDOKAAN_BASE+'/brnData/brn-data',Cookie:digitalDokaanCookies(s),...(options.headers||{})},signal:AbortSignal.timeout(25000)});
+ const send=()=>fetch(DIGITALDOKAAN_BASE+pathname,{...options,headers:{Accept:'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest',Referer:s.serviceUrl|| (DIGITALDOKAAN_BASE+'/secure-login?url_token='+encodeURIComponent(s.urlToken)),Cookie:digitalDokaanCookies(s),...(options.headers||{})},signal:AbortSignal.timeout(25000)});
  let response=await send();if(response.status===401||response.status===403){digitalDokaanSessions.delete('active');s=await digitalDokaanSession();response=await send();}return response;
 }
 function normalizeDigitalDokaanRecord(payload,uniqId){
