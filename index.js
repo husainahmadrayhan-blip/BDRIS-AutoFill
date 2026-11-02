@@ -846,7 +846,7 @@ app.get('/api/automation/jobs/:id',requireUserAuth,(req,res)=>forwardAutomationR
 app.post('/api/automation/jobs/:id/cancel',requireUserAuth,(req,res)=>forwardAutomationRequest(req,res,'POST',`/api/jobs/${encodeURIComponent(req.params.id)}/cancel`,{}));
 
 
-const DATA_STOR_UNLOCK_PRICE=30;
+const DATA_STOR_UNLOCK_PRICE=40;
 function dataStorSameOrigin(req) {
  const origin=String(req.get('origin')||''),host=String(req.get('host')||''),type=String(req.get('content-type')||'').split(';')[0].trim().toLowerCase();
  if(type!=='application/json')return false;if(!origin)return true;
@@ -1124,7 +1124,7 @@ app.get('/api/data-stor/search',requireUserAuth,async(req,res)=>{
  const ids=q.rows.map(r=>String(r.id)),unlocked=ids.length?await pool.query('SELECT record_id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=ANY($2::bigint[])',[String(user.id),ids]):{rows:[]},set=new Set(unlocked.rows.map(r=>String(r.record_id)));
  const b=await pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)]);
  if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});
- dataStorNoStore(res);res.json({ok:true,total:Number(count.rows[0]?.total)||0,page,limit,pages:Math.ceil((Number(count.rows[0]?.total)||0)/limit),balance:Number(b.rows[0].balance)||0,results:q.rows.map(r=>{const isUnlocked=set.has(String(r.id));const item={id:Number(r.id),maskedBrn:dataStorMask(r.brn),unlocked:isUnlocked,price:DATA_STOR_UNLOCK_PRICE,dob:r.dob,bn:r.bn,en:r.en,gender:r.gender};if(isUnlocked)item.brn=r.brn;return item;})});}
+ dataStorNoStore(res);res.json({ok:true,total:Number(count.rows[0]?.total)||0,page,limit,pages:Math.ceil((Number(count.rows[0]?.total)||0)/limit),balance:Number(b.rows[0].balance)||0,price:DATA_STOR_UNLOCK_PRICE,results:q.rows.map(r=>{const isUnlocked=set.has(String(r.id));const item={id:Number(r.id),maskedBrn:dataStorMask(r.brn),unlocked:isUnlocked,price:DATA_STOR_UNLOCK_PRICE,dob:r.dob,bn:r.bn,en:r.en,gender:r.gender};if(isUnlocked)item.brn=r.brn;return item;})});}
  catch(e){console.error('[Data Stor] search failed:',e.message);res.status(503).json({ok:false,error:'Search ব্যর্থ হয়েছে।'});}
 });
 app.get('/api/data-stor/records/:id',requireUserAuth,async(req,res)=>{
@@ -1151,7 +1151,7 @@ app.post('/api/data-stor/records/:id/unlock',requireUserAuth,async(req,res)=>{
   const prev=await client.query('SELECT id FROM fil_data_record_unlocks WHERE user_id=$1 AND record_id=$2',[String(user.id),id]);
   const current=Number(bal.rows[0].balance);if(!Number.isFinite(current)||current<0)throw new Error('INVALID_STORED_BALANCE');
   if(prev.rowCount){await client.query('COMMIT');user.balance=current;dataStorNoStore(res);return res.json({ok:true,alreadyUnlocked:true,charged:0,balance:current,record:rec.rows[0]});}
-  if(current<DATA_STOR_UNLOCK_PRICE){await client.query('ROLLBACK');dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড আনলক করতে ৳৩০ প্রয়োজন।',balance:current,required:DATA_STOR_UNLOCK_PRICE});}
+  if(current<DATA_STOR_UNLOCK_PRICE){await client.query('ROLLBACK');dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড আনলক করতে ৳৪০ প্রয়োজন।',balance:current,required:DATA_STOR_UNLOCK_PRICE});}
   const next=Math.round((current-DATA_STOR_UNLOCK_PRICE)*100)/100,now=Date.now(),key='data-stor-record:'+id;
   await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
   await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),key,DATA_STOR_UNLOCK_PRICE,next,now]);
