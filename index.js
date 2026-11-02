@@ -891,7 +891,8 @@ function parseDataStorCsv(text){
  return {rows:valid,summary};
 }
 
-const DIGITALDOKAAN_PRICE=30;
+const DIGITALDOKAAN_DEFAULT_PRICE=40;
+async function getDigitalDokaanPrice(db=pool){if(!db||!dbReady)return DIGITALDOKAAN_DEFAULT_PRICE;try{const q=await db.query("SELECT setting_value FROM fil_admin_settings WHERE setting_key='digitaldokaan_price'");const n=Number(q.rows[0]?.setting_value?.price);return Number.isFinite(n)&&n>=1&&n<=10000?n:DIGITALDOKAAN_DEFAULT_PRICE;}catch(_){return DIGITALDOKAAN_DEFAULT_PRICE;}}
 const DIGITALDOKAAN_BASE='https://digitaldokaan.win';
 const digitalDokaanSessions=new Map();
 function digitalDokaanCredentials(){const email=String(process.env.DIGITALDOKAAN_EMAIL||'').trim(),password=String(process.env.DIGITALDOKAAN_PASSWORD||'');if(!email||!password)throw new Error('DigitalDokaan credentials not configured');return {email,password};}
@@ -1047,7 +1048,7 @@ function normalizeDigitalDokaanRecord(payload,uniqId){
 }
 app.get('/api/digitaldokaan/stats',requireUserAuth,async(req,res)=>{
  const user=dataStorUser(req,res);if(!user)return;if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});
- try{const [p,b]=await Promise.all([pool.query('SELECT count(*)::int total FROM digitaldokaan_purchases WHERE user_id=$1',[String(user.id)]),pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)])]);if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});dataStorNoStore(res);res.json({ok:true,total:Number(p.rows[0]?.total)||0,balance:Number(b.rows[0].balance)||0,price:DIGITALDOKAAN_PRICE});}
+ try{const [p,b]=await Promise.all([pool.query('SELECT count(*)::int total FROM digitaldokaan_purchases WHERE user_id=$1',[String(user.id)]),pool.query('SELECT balance FROM fil_users WHERE id=$1 AND enabled=true',[String(user.id)])]);if(!b.rowCount)return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});dataStorNoStore(res);res.json({ok:true,total:Number(p.rows[0]?.total)||0,balance:Number(b.rows[0].balance)||0,price:await getDigitalDokaanPrice()});}
  catch(e){console.error('[DigitalDokaan] stats failed:',e.message);res.status(503).json({ok:false,error:'DigitalDokaan তথ্য লোড হয়নি।'});}
 });
 app.get('/api/digitaldokaan/search',requireUserAuth,async(req,res)=>{
@@ -1055,10 +1056,11 @@ app.get('/api/digitaldokaan/search',requireUserAuth,async(req,res)=>{
  const bn=String(req.query.bn||'').trim(),en=String(req.query.en||'').trim(),gender=String(req.query.gender||'').trim();
  if((!bn&&!en)||bn.length>200||en.length>200||gender.length>20)return res.status(400).json({ok:false,error:'বাংলা অথবা ইংরেজি নাম লিখুন।'});
  try{const upstream=await digitalDokaanFetch('/brnData/bdri_search_ajax.php?'+new URLSearchParams({personNameBn:bn,personNameEn:en,gender}).toString());const data=await upstream.json().catch(()=>({}));if(!upstream.ok||data.status!=='success')return res.status(502).json({ok:false,error:'DigitalDokaan Search ব্যর্থ হয়েছে।'});
+ const price=await getDigitalDokaanPrice();
  const rows=Array.isArray(data.data)?data.data:[],ids=rows.map(x=>String(x.uniq_id||'')).filter(x=>/^\d+$/.test(x));
  const saved=ids.length?await pool.query('SELECT r.uniq_id,p.id purchase_id FROM digitaldokaan_records r LEFT JOIN digitaldokaan_purchases p ON p.record_id=r.id AND p.user_id=$1 WHERE r.uniq_id=ANY($2::varchar[])',[String(user.id),ids]):{rows:[]};
  const bought=new Set(saved.rows.filter(x=>x.purchase_id).map(x=>String(x.uniq_id)));dataStorNoStore(res);
- res.json({ok:true,total:rows.length,results:rows.map(x=>({uniqId:String(x.uniq_id||''),bn:String(x.personNameBn||''),en:String(x.personNameEn||''),dob:String(x.personBirthDate||''),gender:String(x.gender||''),alreadyPurchased:bought.has(String(x.uniq_id)),price:DIGITALDOKAAN_PRICE}))});
+ res.json({ok:true,total:rows.length,results:rows.map(x=>({uniqId:String(x.uniq_id||''),bn:String(x.personNameBn||''),en:String(x.personNameEn||''),dob:String(x.personBirthDate||''),gender:String(x.gender||''),alreadyPurchased:bought.has(String(x.uniq_id)),price}))});
  }catch(e){console.error('[DigitalDokaan] search failed:',e.message);res.status(502).json({ok:false,error:'DigitalDokaan সার্ভার পাওয়া যাচ্ছে না।'});}
 });
 app.get('/api/digitaldokaan/records/:uniqId',requireUserAuth,async(req,res)=>{
@@ -1080,8 +1082,9 @@ app.post('/api/digitaldokaan/records/:uniqId/purchase',requireUserAuth,async(req
   if(!locked.rowCount||!locked.rows[0].enabled){await client.query('ROLLBACK');transactionOpen=false;return res.status(401).json({ok:false,error:'AutoFill account পাওয়া যায়নি।'});}
   const previous=await client.query('SELECT r.* FROM digitaldokaan_records r JOIN digitaldokaan_purchases p ON p.record_id=r.id WHERE p.user_id=$1 AND r.uniq_id=$2',[String(user.id),uniqId]);
   if(previous.rowCount){await client.query('COMMIT');transactionOpen=false;const r=previous.rows[0];dataStorNoStore(res);return res.json({ok:true,alreadyPurchased:true,charged:0,balance:Number(locked.rows[0].balance),record:{ubrn:r.ubrn,personNameEn:r.person_name_en,personNameBn:r.person_name_bn,personBirthDate:r.dob_text,gender:r.gender,fatherNameEn:r.father_name_en,fatherNameBn:r.father_name_bn,motherNameEn:r.mother_name_en,motherNameBn:r.mother_name_bn}});}
+  const purchasePrice=await getDigitalDokaanPrice(client);
   const current=Number(locked.rows[0].balance);
-  if(!Number.isFinite(current)||current<DIGITALDOKAAN_PRICE){await client.query('ROLLBACK');transactionOpen=false;dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড কিনতে AutoFill ব্যালেন্সে কমপক্ষে ৳৩০ থাকতে হবে।',balance:current,required:DIGITALDOKAAN_PRICE});}
+  if(!Number.isFinite(current)||current<purchasePrice){await client.query('ROLLBACK');transactionOpen=false;dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড কিনতে AutoFill ব্যালেন্সে কমপক্ষে ৳'+purchasePrice+' থাকতে হবে।',balance:current,required:purchasePrice});}
   // Keep the user's wallet row locked during the provider call to serialize purchases.
   const form=new URLSearchParams({uniqId});
   const upstream=await digitalDokaanFetch('/brnData/buy-test.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',Origin:DIGITALDOKAAN_BASE},body:form.toString()});
@@ -1090,13 +1093,13 @@ app.post('/api/digitaldokaan/records/:uniqId/purchase',requireUserAuth,async(req
   providerPurchased=true;const record=normalizeDigitalDokaanRecord(payload,uniqId);
   const insertSql='INSERT INTO digitaldokaan_records(uniq_id,ubrn,dob_text,person_name_en,person_name_bn,gender,father_name_en,father_name_bn,mother_name_en,mother_name_bn,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(uniq_id) DO UPDATE SET uniq_id=EXCLUDED.uniq_id RETURNING id';
   const saved=await client.query(insertSql,[uniqId,record.ubrn,record.dobText,record.personNameEn,record.personNameBn,record.gender,record.fatherNameEn,record.fatherNameBn,record.motherNameEn,record.motherNameBn,Date.now()]);
-  const next=Math.round((current-DIGITALDOKAAN_PRICE)*100)/100,now=Date.now(),recordId=saved.rows[0].id;
+  const next=Math.round((current-purchasePrice)*100)/100,now=Date.now(),recordId=saved.rows[0].id;
   await client.query('UPDATE fil_users SET balance=$2 WHERE id=$1',[String(user.id),next]);
-  await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),'digitaldokaan:'+uniqId,DIGITALDOKAAN_PRICE,next,now]);
-  await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),String(locked.rows[0].username||user.username),'digitaldokaan_purchase',-DIGITALDOKAAN_PRICE,next,'DigitalDokaan purchase uniqId='+uniqId,now]);
-  await client.query('INSERT INTO digitaldokaan_purchases(user_id,record_id,price,provider_cost,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),recordId,DIGITALDOKAAN_PRICE,35,now]);
+  await client.query('INSERT INTO fil_usage_charges(user_id,idempotency_key,amount,balance_after,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),'digitaldokaan:'+uniqId,purchasePrice,next,now]);
+  await client.query('INSERT INTO fil_balance_history(user_id,username,action,change_amount,balance_after,note,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[String(user.id),String(locked.rows[0].username||user.username),'digitaldokaan_purchase',-purchasePrice,next,'DigitalDokaan purchase uniqId='+uniqId,now]);
+  await client.query('INSERT INTO digitaldokaan_purchases(user_id,record_id,price,provider_cost,created_at) VALUES($1,$2,$3,$4,$5)',[String(user.id),recordId,purchasePrice,35,now]);
   await client.query('COMMIT');transactionOpen=false;user.balance=next;dataStorNoStore(res);
-  return res.json({ok:true,alreadyPurchased:false,charged:DIGITALDOKAAN_PRICE,balance:next,record:{ubrn:record.ubrn,personNameEn:record.personNameEn,personNameBn:record.personNameBn,personBirthDate:record.dobText,gender:record.gender,fatherNameEn:record.fatherNameEn,fatherNameBn:record.fatherNameBn,motherNameEn:record.motherNameEn,motherNameBn:record.motherNameBn}});
+  return res.json({ok:true,alreadyPurchased:false,charged:purchasePrice,balance:next,record:{ubrn:record.ubrn,personNameEn:record.personNameEn,personNameBn:record.personNameBn,personBirthDate:record.dobText,gender:record.gender,fatherNameEn:record.fatherNameEn,fatherNameBn:record.fatherNameBn,motherNameEn:record.motherNameEn,motherNameBn:record.motherNameBn}});
  }catch(e){
   if(transactionOpen)await client.query('ROLLBACK').catch(()=>{});
   console.error('[DigitalDokaan] accounting failed:',String(e.message||e));
@@ -1257,6 +1260,8 @@ app.post('/api/balance/charge-download',requireUserAuth,async(req,res)=>{
   saveAuthStore(authStore); await recordBalanceChange(user,-amount,'download_charge','Certificate download');
   return res.json({ok:true,balance:user.balance,charged:amount,local:true});
 });
+app.get('/api/admin/digitaldokaan-price',requireAdmin,async(req,res)=>{if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});res.set('Cache-Control','no-store');res.json({ok:true,price:await getDigitalDokaanPrice()});});
+app.post('/api/admin/digitaldokaan-price',requireAdmin,async(req,res)=>{if(!pool||!dbReady)return res.status(503).json({ok:false,error:'Neon PostgreSQL সংযোগ প্রয়োজন।'});const price=Number(req.body?.price);if(!Number.isFinite(price)||price<1||price>10000||Math.round(price*100)!==price*100)return res.status(400).json({ok:false,error:'Rate ১ থেকে ১০,০০০ টাকার মধ্যে হতে হবে (সর্বোচ্চ ২ দশমিক)।'});try{await pool.query("INSERT INTO fil_admin_settings(setting_key,setting_value) VALUES('digitaldokaan_price',$1::jsonb) ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value",[JSON.stringify({price})]);res.set('Cache-Control','no-store');res.json({ok:true,price});}catch(e){console.error('[DigitalDokaan] admin rate update failed:',e.message);res.status(503).json({ok:false,error:'Rate সংরক্ষণ করা যায়নি।'});}});
 app.get('/api/admin/users',requireAdmin,(req,res)=>res.json({ok:true,users:authStore.users.map(u=>{const {passwordHash,accessToken,...safe}=u;return {...safe,loginLink:createUserLoginLink(u)};})}));
 app.post('/api/admin/users',requireAdmin,(req,res)=>{const {username,password,name=''}=req.body||{};const cleanUsername=String(username||'').trim();if(!cleanUsername||!password)return res.status(400).json({ok:false,error:'Username এবং password দিন।'});if(cleanUsername.length<3||cleanUsername.length>64)return res.status(400).json({ok:false,error:'Username ৩ থেকে ৬৪ অক্ষরের হতে হবে।'});if(String(password).length<8)return res.status(400).json({ok:false,error:'Password কমপক্ষে ৮ অক্ষরের হতে হবে।'});if(authStore.users.some(u=>u.username.toLowerCase()===cleanUsername.toLowerCase()))return res.status(409).json({ok:false,error:'এই Username আগে থেকেই আছে।'});const user={id:newToken().slice(0,16),username:cleanUsername,name:String(name||'').trim(),passwordHash:hashPassword(password),accessToken:newToken(),enabled:true,deviceId:'',createdAt:Date.now(),lastLoginAt:null,balance:0,previewRate:4};authStore.users.push(user);saveAuthStore(authStore);const {passwordHash,accessToken,...safe}=user;res.json({ok:true,user:safe,link:createUserLoginLink(user),message:'User তৈরি হয়েছে। User link ও Username/Password দিয়ে লগইন করুন।'});});
 app.patch('/api/admin/users/:id',requireAdmin,async(req,res)=>{const user=authStore.users.find(u=>u.id===req.params.id);if(!user)return res.status(404).json({ok:false,error:'User not found.'});const before=Number(user.balance)||0;if(typeof req.body.enabled==='boolean')user.enabled=req.body.enabled;if(req.body.resetDevice)user.deviceId='';if(req.body.newPassword){if(String(req.body.newPassword).length<8)return res.status(400).json({ok:false,error:'Password কমপক্ষে ৮ অক্ষরের হতে হবে।'});user.passwordHash=hashPassword(req.body.newPassword);}for(const k of ['name','nameBn','nameEn','birthRegNo','birthDateBn','birthDateEn'])if(req.body[k]!==undefined)user[k]=String(req.body[k]??'').trim();if(req.body.setPreviewRate!==undefined){const n=Number(req.body.setPreviewRate);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid preview rate.'});user.previewRate=Math.round(n*100)/100;}if(req.body.setBalance!==undefined){const n=Number(req.body.setBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance.'});user.balance=Math.round(n*100)/100;}if(req.body.addBalance!==undefined){const n=Number(req.body.addBalance);if(!Number.isFinite(n)||n<0)return res.status(400).json({ok:false,error:'Invalid balance amount.'});user.balance=Math.round(((Number(user.balance)||0)+n)*100)/100;}saveAuthStore(authStore);if(Number(user.balance)!==before)await recordBalanceChange(user,Number(user.balance)-before,req.body.addBalance!==undefined?'admin_add_balance':'admin_set_balance','Admin balance update');const {passwordHash,accessToken,...safe}=user;res.json({ok:true,user:safe});});
