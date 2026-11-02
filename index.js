@@ -915,8 +915,22 @@ function digitalDokaanCookies(session) {
 }
 async function digitalDokaanLogin() {
   const cfg = digitalDokaanCredentials();
-  const configuredToken = String(process.env.DIGITALDOKAAN_URL_TOKEN || '').trim();
-  if (!configuredToken) throw new Error('DigitalDokaan URL token not configured');
+  const configuredTokenValue = String(process.env.DIGITALDOKAAN_URL_TOKEN || '').trim();
+  if (!configuredTokenValue) throw new Error('DigitalDokaan URL token not configured');
+  // Accept either the raw token or the complete tokenized login URL from Render.
+  // Never encode a full URL as the url_token value.
+  let configuredToken = configuredTokenValue;
+  if (/^https?:\/\//i.test(configuredTokenValue)) {
+    try {
+      const parsedTokenUrl = new URL(configuredTokenValue);
+      configuredToken = parsedTokenUrl.searchParams.get('url_token') || '';
+    } catch (_) {
+      configuredToken = '';
+    }
+  }
+  if (!configuredToken || /^https?:\/\//i.test(configuredToken)) {
+    throw new Error('DigitalDokaan URL token is invalid. Set DIGITALDOKAAN_URL_TOKEN to the token value or tokenized login URL.');
+  }
 
   // The provider renders the login form client-side. Use the existing shared
   // Chrome process so the DOM and same-origin AJAX request match real login.
