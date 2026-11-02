@@ -940,11 +940,11 @@ async function digitalDokaanLogin() {
     || pageHtml.match(/name=["']csrf_token["'][^>]*content=["']([^"']+)["']/i)?.[1]
     || pageHtml.match(/content=["']([^"']+)["'][^>]*name=["']csrf_token["']/i)?.[1];
   if (!csrf) {
-    const inputNames = [...pageHtml.matchAll(/<input\\b[^>]*\\bname\\s*=\\s*["']([^"']+)["']/gi)].map(m => m[1]).slice(0, 40);
-    const formActions = [...pageHtml.matchAll(/<form\\b[^>]*\\baction\\s*=\\s*["']([^"']*)["']/gi)].map(m => {
+    const inputNames = [...pageHtml.matchAll(/<input\b[^>]*\bname\s*=\s*["']([^"']+)["']/gi)].map(m => m[1]).slice(0, 40);
+    const formActions = [...pageHtml.matchAll(/<form\b[^>]*\baction\s*=\s*["']([^"']*)["']/gi)].map(m => {
       try { return new URL(m[1], DIGITALDOKAAN_BASE).pathname; } catch (_) { return '[unparsed]'; }
     }).slice(0, 10);
-    const title = pageHtml.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1]?.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 120) || '';
+    const title = pageHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '';
     console.warn('[DigitalDokaan] tokenized login page has no CSRF field; safe markup diagnostics', JSON.stringify({
       status: loginPage.status,
       contentType: loginPage.headers.get('content-type') || '',
