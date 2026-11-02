@@ -274,9 +274,10 @@ async function initializeDatabase(){
     )`);
     await client.query(`CREATE TABLE IF NOT EXISTS digitaldokaan_purchases (
       id bigserial PRIMARY KEY, user_id text NOT NULL, record_id bigint NOT NULL REFERENCES digitaldokaan_records(id),
-      price numeric(14,2) NOT NULL DEFAULT 40, provider_cost numeric(14,2) NOT NULL DEFAULT 35,
+      price numeric(14,2) NOT NULL DEFAULT 30, provider_cost numeric(14,2) NOT NULL DEFAULT 35,
       created_at bigint NOT NULL, UNIQUE(user_id,record_id)
     )`);
+    await client.query('ALTER TABLE digitaldokaan_purchases ALTER COLUMN price SET DEFAULT 30');
     await client.query('CREATE INDEX IF NOT EXISTS digitaldokaan_purchases_user_created_idx ON digitaldokaan_purchases(user_id,created_at DESC)');
     // Data Stor tables are additive and share AutoFill's existing Neon pool.
     await client.query(`CREATE TABLE IF NOT EXISTS birth_records (
@@ -890,7 +891,7 @@ function parseDataStorCsv(text){
  return {rows:valid,summary};
 }
 
-const DIGITALDOKAAN_PRICE=40;
+const DIGITALDOKAAN_PRICE=30;
 const DIGITALDOKAAN_BASE='https://digitaldokaan.win';
 const digitalDokaanSessions=new Map();
 function digitalDokaanCredentials(){const email=String(process.env.DIGITALDOKAAN_EMAIL||'').trim(),password=String(process.env.DIGITALDOKAAN_PASSWORD||'');if(!email||!password)throw new Error('DigitalDokaan credentials not configured');return {email,password};}
@@ -1080,7 +1081,7 @@ app.post('/api/digitaldokaan/records/:uniqId/purchase',requireUserAuth,async(req
   const previous=await client.query('SELECT r.* FROM digitaldokaan_records r JOIN digitaldokaan_purchases p ON p.record_id=r.id WHERE p.user_id=$1 AND r.uniq_id=$2',[String(user.id),uniqId]);
   if(previous.rowCount){await client.query('COMMIT');transactionOpen=false;const r=previous.rows[0];dataStorNoStore(res);return res.json({ok:true,alreadyPurchased:true,charged:0,balance:Number(locked.rows[0].balance),record:{ubrn:r.ubrn,personNameEn:r.person_name_en,personNameBn:r.person_name_bn,personBirthDate:r.dob_text,gender:r.gender,fatherNameEn:r.father_name_en,fatherNameBn:r.father_name_bn,motherNameEn:r.mother_name_en,motherNameBn:r.mother_name_bn}});}
   const current=Number(locked.rows[0].balance);
-  if(!Number.isFinite(current)||current<DIGITALDOKAAN_PRICE){await client.query('ROLLBACK');transactionOpen=false;dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড কিনতে AutoFill ব্যালেন্সে কমপক্ষে ৳৪০ থাকতে হবে।',balance:current,required:DIGITALDOKAAN_PRICE});}
+  if(!Number.isFinite(current)||current<DIGITALDOKAAN_PRICE){await client.query('ROLLBACK');transactionOpen=false;dataStorNoStore(res);return res.status(402).json({ok:false,error:'নতুন রেকর্ড কিনতে AutoFill ব্যালেন্সে কমপক্ষে ৳৩০ থাকতে হবে।',balance:current,required:DIGITALDOKAAN_PRICE});}
   // Keep the user's wallet row locked during the provider call to serialize purchases.
   const form=new URLSearchParams({uniqId});
   const upstream=await digitalDokaanFetch('/brnData/buy-test.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',Origin:DIGITALDOKAAN_BASE},body:form.toString()});
