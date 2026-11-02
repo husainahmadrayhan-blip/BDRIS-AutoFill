@@ -952,10 +952,10 @@ function renderDigitalDokaanWindow(){
  const request=async(u,o={})=>{const r=await fetch(u,o),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request failed');return d;};
  const balance=n=>{const e=document.getElementById('ddBalance');if(e)e.textContent='৳'+Number(n||0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2});};
  const esc=v=>escHtml(v);
- function confirmPurchase(uniqId,already){
+ function confirmPurchase(uniqId,already,price){
   if(already){window.digitalDokaanPurchase(uniqId,true);return;}
   const modal=document.createElement('div');modal.id='ddPurchaseModal';
-  modal.innerHTML='<div class="dd-modal-card" role="dialog" aria-modal="true"><div class="dd-modal-icon">?</div><h2>কনফার্ম!</h2><p>আপনি কি এই ডাটাটি কিনতে চান? আপনার AutoFill অ্যাকাউন্ট থেকে <strong>৩০ টাকা</strong> কেটে নেওয়া হবে।</p><div class="dd-modal-actions"><button type="button" class="dd-confirm">Yes, Buy Now</button><button type="button" class="dd-cancel">Cancel</button></div></div>';
+  modal.innerHTML='<div class="dd-modal-card" role="dialog" aria-modal="true"><div class="dd-modal-icon">?</div><h2>কনফার্ম!</h2><p>আপনি কি এই ডাটাটি কিনতে চান? আপনার AutoFill অ্যাকাউন্ট থেকে <strong>'+Number(price||40)+' টাকা</strong> কেটে নেওয়া হবে।</p><div class="dd-modal-actions"><button type="button" class="dd-confirm">Yes, Buy Now</button><button type="button" class="dd-cancel">Cancel</button></div></div>';
   document.body.appendChild(modal);const close=()=>modal.remove();
   modal.querySelector('.dd-cancel').addEventListener('click',close);
   modal.addEventListener('click',e=>{if(e.target===modal)close();});
@@ -967,8 +967,8 @@ function renderDigitalDokaanWindow(){
   msg('DigitalDokaan-এ অনুসন্ধান চলছে…');document.getElementById('ddResults').innerHTML='';document.getElementById('ddTotal').textContent='';
   try{const p=new URLSearchParams({bn,en,gender}),d=await request('/api/digitaldokaan/search?'+p.toString());document.getElementById('ddTotal').textContent='মোট ফলাফল: '+d.total;
    if(!d.results.length){msg('কোনো রেকর্ড পাওয়া যায়নি।');return;}msg(d.total+'টি রেকর্ড পাওয়া গেছে।');
-   document.getElementById('ddResults').innerHTML=d.results.map(r=>'<div class="dd-result-card" data-uniq-id="'+esc(r.uniqId)+'"><div class="dd-name-en">'+esc(r.en||'নাম নেই')+'</div><div class="dd-name-bn">'+esc(r.bn||'')+'</div><div class="dd-meta"><span>লিঙ্গ</span><strong>'+esc(r.gender||'—')+'</strong></div><div class="dd-meta"><span>জন্ম তারিখ</span><strong>'+esc(r.dob||'—')+'</strong></div><button class="dd-buy '+(r.alreadyPurchased?'dd-bought':'')+'" type="button">'+(r.alreadyPurchased?'✓ আগে কেনা হয়েছে, দেখুন':'🛒 Buy Now · ৳৩০')+'</button></div>').join('');
-   document.querySelectorAll('#digitalDokaanWindow .dd-result-card').forEach((card,index)=>{const record=d.results[index];card.querySelector('button').addEventListener('click',()=>confirmPurchase(record.uniqId,record.alreadyPurchased));});
+   document.getElementById('ddResults').innerHTML=d.results.map(r=>'<div class="dd-result-card" data-uniq-id="'+esc(r.uniqId)+'"><div class="dd-name-en">'+esc(r.en||'নাম নেই')+'</div><div class="dd-name-bn">'+esc(r.bn||'')+'</div><div class="dd-meta"><span>লিঙ্গ</span><strong>'+esc(r.gender||'—')+'</strong></div><div class="dd-meta"><span>জন্ম তারিখ</span><strong>'+esc(r.dob||'—')+'</strong></div><button class="dd-buy '+(r.alreadyPurchased?'dd-bought':'')+'" type="button">'+(r.alreadyPurchased?'✓ আগে কেনা হয়েছে, দেখুন':'🛒 Buy Now · ৳'+Number(r.price||40))+'</button></div>').join('');
+   document.querySelectorAll('#digitalDokaanWindow .dd-result-card').forEach((card,index)=>{const record=d.results[index];card.querySelector('button').addEventListener('click',()=>confirmPurchase(record.uniqId,record.alreadyPurchased,record.price));});
   }catch(e){msg(e.message||'Search ব্যর্থ হয়েছে।');}
  }
  window.digitalDokaanPurchase=async(uniqId,already)=>{
