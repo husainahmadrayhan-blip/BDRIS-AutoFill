@@ -911,106 +911,46 @@ function digitalDokaanTokenFromUrl(value) {
   catch (_) { return ''; }
 }
 function digitalDokaanCookies(session) {
-  return 'cookie_for_url_token=' + session.urlToken + '; PHPSESSID=' + session.phpSession;
+  return session.cookieHeader || ('cookie_for_url_token=' + session.urlToken + '; PHPSESSID=' + session.phpSession);
 }
 async function digitalDokaanLogin() {
   const cfg = digitalDokaanCredentials();
   const jar = new Map();
-  let currentUrl = DIGITALDOKAAN_BASE + '/secure-login';
-  let firstStatus = 0, redirects = 0, urlToken = '';
-  for (let hop = 0; hop < 6; hop++) {
-    const response = await fetch(currentUrl, {
-      redirect: 'manual',
-      headers: jar.size ? { Cookie: digitalDokaanCookieHeader(jar) } : {},
-      signal: AbortSignal.timeout(15000)
-    });
-    if (!firstStatus) firstStatus = response.status;
-    digitalDokaanSetCookies(response.headers, jar);
-    urlToken = jar.get('cookie_for_url_token') || urlToken || digitalDokaanTokenFromUrl(currentUrl);
-    const location = response.headers.get('location') || '';
-    const redirectUrl = location ? new URL(location, currentUrl) : null;
-    console.info('[DigitalDokaan] bootstrap response', JSON.stringify({
-      hop,
-      status: response.status,
-      path: new URL(currentUrl).pathname,
-      contentType: response.headers.get('content-type') || '',
-      redirectPath: redirectUrl ? redirectUrl.pathname : '',
-      redirectQueryKeys: redirectUrl ? [...redirectUrl.searchParams.keys()] : [],
-      redirectHasUrlToken: redirectUrl ? redirectUrl.searchParams.has('url_token') : false,
-      cookieNames: [...jar.keys()]
-    }));
-    if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
-    redirects++;
-    const nextUrl = redirectUrl;
-    urlToken = nextUrl.searchParams.get('url_token') || urlToken;
-    currentUrl = nextUrl.toString();
-  }
-  if (urlToken) jar.set('cookie_for_url_token', urlToken);
-  let phpSession = jar.get('PHPSESSID') || '';
-  if (!urlToken || !phpSession) {
-    const probeUrl = DIGITALDOKAAN_BASE + '/secure-login' + (urlToken ? '?url_token=' + encodeURIComponent(urlToken) : '');
-    const probe = await fetch(probeUrl, {
-      headers: jar.size ? { Cookie: digitalDokaanCookieHeader(jar) } : {},
-      redirect: 'manual',
-      signal: AbortSignal.timeout(15000)
-    });
-    digitalDokaanSetCookies(probe.headers, jar);
-    const probeLocation = probe.headers.get('location') || '';
-    let probeRedirectPath = '';
-    let probeRedirectQueryKeys = [];
-    try {
-      if (probeLocation) {
-        const parsed = new URL(probeLocation, probeUrl);
-        probeRedirectPath = parsed.pathname;
-        probeRedirectQueryKeys = [...parsed.searchParams.keys()];
-      }
-    } catch (_) {}
-    console.info('[DigitalDokaan] bootstrap probe', JSON.stringify({
-      status: probe.status,
-      path: new URL(probeUrl).pathname,
-      responseUrlPath: (() => { try { return new URL(probe.url || probeUrl).pathname; } catch (_) { return ''; } })(),
-      contentType: probe.headers.get('content-type') || '',
-      redirectPath: probeRedirectPath,
-      redirectQueryKeys: probeRedirectQueryKeys,
-      redirectHasUrlToken: probeRedirectQueryKeys.includes('url_token'),
-      cookieNames: [...jar.keys()]
-    }));
-    urlToken = jar.get('cookie_for_url_token') || urlToken || digitalDokaanTokenFromUrl(probe.url || probeUrl);
-    if (urlToken) jar.set('cookie_for_url_token', urlToken);
-    phpSession = jar.get('PHPSESSID') || '';
-  }
-  if (!urlToken || !phpSession) {
-    console.warn('[DigitalDokaan] session bootstrap incomplete', JSON.stringify({
-      status: firstStatus, redirects, cookieNames: [...jar.keys()],
-      hasUrlToken: !!urlToken, hasPhpSession: !!phpSession
-    }));
-    throw new Error('DigitalDokaan initial session unavailable');
-  }
-  const loginPageUrl = DIGITALDOKAAN_BASE + '/secure-login?url_token=' + encodeURIComponent(urlToken);
+  const loginPageUrl = DIGITALDOKAAN_BASE + '/pages/login.php';
+
+  // The live site issues its PHP session and CSRF token on the actual login page.
+  // Do not bootstrap through /secure-login: that route redirects to itself on
+  // the provider and does not issue cookie_for_url_token for this account flow.
   const loginPage = await fetch(loginPageUrl, {
-    headers: { Cookie: digitalDokaanCookieHeader(jar), Referer: DIGITALDOKAAN_BASE + '/secure-login' },
-    signal: AbortSignal.timeout(15000)
+    method: 'GET',
+    headers: { Accept: 'text/html,application/xhtml+xml' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(20000)
   });
   digitalDokaanSetCookies(loginPage.headers, jar);
-  let pageHtml = await loginPage.text();
-  let csrf = pageHtml.match(/name=["']csrf_token["'][^>]*value=["']([^"']+)["']/i)?.[1]
+  if (!loginPage.ok) throw new Error('DigitalDokaan login page unavailable');
+  const pageHtml = await loginPage.text();
+  const csrf = pageHtml.match(/name=["']csrf_token["'][^>]*value=["']([^"']+)["']/i)?.[1]
     || pageHtml.match(/value=["']([^"']+)["'][^>]*name=["']csrf_token["']/i)?.[1];
   if (!csrf) {
-    const fallback = await fetch(DIGITALDOKAAN_BASE + '/brnData/brn-data', {
-      headers: { Cookie: digitalDokaanCookieHeader(jar), Referer: loginPageUrl },
-      signal: AbortSignal.timeout(15000)
-    });
-    digitalDokaanSetCookies(fallback.headers, jar);
-    pageHtml = await fallback.text();
-    csrf = pageHtml.match(/name=["']csrf_token["'][^>]*value=["']([^"']+)["']/i)?.[1]
-      || pageHtml.match(/value=["']([^"']+)["'][^>]*name=["']csrf_token["']/i)?.[1];
+    console.warn('[DigitalDokaan] login page did not contain csrf_token', JSON.stringify({
+      status: loginPage.status,
+      contentType: loginPage.headers.get('content-type') || '',
+      cookieNames: [...jar.keys()]
+    }));
+    throw new Error('DigitalDokaan CSRF token unavailable');
   }
-  if (!csrf) throw new Error('DigitalDokaan CSRF token unavailable');
-  const form = new URLSearchParams({ csrf_token: csrf, email: cfg.email, password: cfg.password });
-  const response = await fetch(DIGITALDOKAAN_BASE + '/pages/login.php', {
+
+  const form = new URLSearchParams({
+    csrf_token: csrf,
+    email: cfg.email,
+    password: cfg.password
+  });
+  const response = await fetch(loginPageUrl, {
     method: 'POST',
+    redirect: 'follow',
     headers: {
-      Accept: 'application/json',
+      Accept: 'application/json, text/javascript, */*; q=0.01',
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       'X-Requested-With': 'XMLHttpRequest',
       Origin: DIGITALDOKAAN_BASE,
@@ -1022,10 +962,31 @@ async function digitalDokaanLogin() {
   });
   digitalDokaanSetCookies(response.headers, jar);
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.status !== 'success') throw new Error('DigitalDokaan login failed');
-  phpSession = jar.get('PHPSESSID') || phpSession;
-  urlToken = jar.get('cookie_for_url_token') || urlToken;
-  return { urlToken, phpSession, createdAt: Date.now() };
+  if (!response.ok || payload.status !== 'success') {
+    console.warn('[DigitalDokaan] login rejected', JSON.stringify({
+      status: response.status,
+      providerStatus: String(payload.status || ''),
+      cookieNames: [...jar.keys()]
+    }));
+    throw new Error('DigitalDokaan login failed');
+  }
+
+  const phpSession = jar.get('PHPSESSID') || '';
+  const urlToken = jar.get('cookie_for_url_token') || '';
+  if (!phpSession || !urlToken) {
+    console.warn('[DigitalDokaan] login succeeded but session cookies incomplete', JSON.stringify({
+      hasPhpSession: !!phpSession,
+      hasUrlToken: !!urlToken,
+      cookieNames: [...jar.keys()]
+    }));
+    throw new Error('DigitalDokaan authenticated session cookies unavailable');
+  }
+  return {
+    urlToken,
+    phpSession,
+    cookieHeader: digitalDokaanCookieHeader(jar),
+    createdAt: Date.now()
+  };
 }
 async function digitalDokaanSession(){const s=digitalDokaanSessions.get('active');if(s&&Date.now()-s.createdAt<15*60*1000)return s;const next=await digitalDokaanLogin();digitalDokaanSessions.set('active',next);return next;}
 async function digitalDokaanFetch(pathname,options={}){
