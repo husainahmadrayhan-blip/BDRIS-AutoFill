@@ -917,16 +917,18 @@ async function digitalDokaanLogin() {
   const cfg = digitalDokaanCredentials();
   const jar = new Map();
   const configuredToken = String(process.env.DIGITALDOKAAN_URL_TOKEN || '').trim();
-  if (!configuredToken) {
-    throw new Error('DigitalDokaan URL token not configured');
-  }
+  if (!configuredToken) throw new Error('DigitalDokaan URL token not configured');
 
-  // The provider requires its tokenized secure-login page BEFORE authentication.
-  // After a successful login it redirects to the plain /secure-login URL.
+  // The stable URL token must accompany the FIRST request. The provider uses
+  // this cookie while rendering /secure-login and may redirect away the query.
+  jar.set('cookie_for_url_token', configuredToken);
   const loginPageUrl = DIGITALDOKAAN_BASE + '/secure-login?url_token=' + encodeURIComponent(configuredToken);
   const loginPage = await fetch(loginPageUrl, {
     method: 'GET',
-    headers: { Accept: 'text/html,application/xhtml+xml' },
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      Cookie: digitalDokaanCookieHeader(jar)
+    },
     redirect: 'follow',
     signal: AbortSignal.timeout(20000)
   });
@@ -934,21 +936,22 @@ async function digitalDokaanLogin() {
   if (!loginPage.ok) throw new Error('DigitalDokaan tokenized login page unavailable');
   const pageHtml = await loginPage.text();
   const csrf = pageHtml.match(/name=["']csrf_token["'][^>]*value=["']([^"']+)["']/i)?.[1]
-    || pageHtml.match(/value=["']([^"']+)["'][^>]*name=["']csrf_token["']/i)?.[1];
+    || pageHtml.match(/value=["']([^"']+)["'][^>]*name=["']csrf_token["']/i)?.[1]
+    || pageHtml.match(/name=["']csrf_token["'][^>]*content=["']([^"']+)["']/i)?.[1]
+    || pageHtml.match(/content=["']([^"']+)["'][^>]*name=["']csrf_token["']/i)?.[1];
   if (!csrf) {
     console.warn('[DigitalDokaan] tokenized login page did not contain csrf_token', JSON.stringify({
       status: loginPage.status,
       contentType: loginPage.headers.get('content-type') || '',
       finalPath: (() => { try { return new URL(loginPage.url).pathname; } catch (_) { return ''; } })(),
       cookieNames: [...jar.keys()],
-      hasConfiguredUrlToken: true
+      hasConfiguredUrlToken: true,
+      htmlHasCsrfName: /csrf_token/i.test(pageHtml),
+      htmlLength: pageHtml.length
     }));
     throw new Error('DigitalDokaan CSRF token unavailable');
   }
 
-  // Preserve the stable URL token in the cookie when the provider has not
-  // already supplied its own cookie, and keep the same PHP session throughout.
-  if (!jar.has('cookie_for_url_token')) jar.set('cookie_for_url_token', configuredToken);
   const form = new URLSearchParams({
     csrf_token: csrf,
     email: cfg.email,
@@ -962,7 +965,7 @@ async function digitalDokaanLogin() {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       'X-Requested-With': 'XMLHttpRequest',
       Origin: DIGITALDOKAAN_BASE,
-      Referer: loginPageUrl,
+      Referer: DIGITALDOKAAN_BASE + '/secure-login',
       Cookie: digitalDokaanCookieHeader(jar)
     },
     body: form.toString(),
@@ -981,19 +984,11 @@ async function digitalDokaanLogin() {
 
   const phpSession = jar.get('PHPSESSID') || '';
   const urlToken = jar.get('cookie_for_url_token') || configuredToken;
-  if (!phpSession || !urlToken) {
-    console.warn('[DigitalDokaan] login succeeded but session cookies incomplete', JSON.stringify({
-      hasPhpSession: !!phpSession,
-      hasUrlToken: !!urlToken,
-      cookieNames: [...jar.keys()]
-    }));
-    throw new Error('DigitalDokaan authenticated session cookies unavailable');
-  }
+  if (!phpSession || !urlToken) throw new Error('DigitalDokaan authenticated session cookies unavailable');
   const serviceUrl = DIGITALDOKAAN_BASE + '/secure-login';
   console.info('[DigitalDokaan] login session established', JSON.stringify({
     status: response.status,
     providerStatus: String(payload.status || ''),
-    postLoginPath: (() => { try { return new URL(response.url || serviceUrl).pathname; } catch (_) { return '/secure-login'; } })(),
     cookieNames: [...jar.keys()],
     hasUrlToken: !!urlToken
   }));
