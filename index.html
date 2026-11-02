@@ -653,6 +653,67 @@ body.service-pdf-image .workspace-grid>.side-bar,body.service-pdf-history .works
 body.service-window-mode .workspace-grid>.side-bar .history-panel,body.service-window-mode .workspace-grid>.side-bar .pdf-image-panel{display:none!important}
 body.service-pdf-image .workspace-grid>.side-bar .pdf-image-panel{display:block!important}body.service-pdf-history .workspace-grid>.side-bar .history-panel{display:block!important}
 body.service-pdf-image .form-main,body.service-pdf-history .form-main,body.service-pdf-image .bottom-preview-action,body.service-pdf-history .bottom-preview-action,body.service-pdf-image .status,body.service-pdf-history .status,body.service-pdf-image .search-fields-stack,body.service-pdf-history .search-fields-stack,body.service-pdf-image .actions.top-actions,body.service-pdf-history .actions.top-actions,body.service-pdf-image #captchaArea,body.service-pdf-history #captchaArea{display:none!important}
+
+/* Digital Dokaan style Data Store */
+#dataStorWindow{background:#f3f7fc!important;color:#162d4d!important;padding:clamp(12px,3vw,28px)!important}
+#dataStorWindow .ds-wrap{max-width:1060px!important}
+#dataStorWindow .ds-head{align-items:flex-start!important;margin-bottom:20px!important}
+#dataStorWindow .ds-kicker{font-size:11px;font-weight:800;letter-spacing:1.7px;color:#1877cf}
+#dataStorWindow .ds-head h2{font-size:clamp(22px,3vw,30px)!important;font-weight:850!important;color:#162d4d}
+#dataStorWindow .ds-subtitle{color:#647894;font-size:14px}
+#dataStorWindow .ds-card{background:#fff!important;border:1px solid #e1eaf4!important;border-radius:18px!important;padding:clamp(14px,2.5vw,22px)!important;box-shadow:0 8px 24px rgba(31,67,112,.055)!important;margin-bottom:16px!important}
+#dataStorWindow .ds-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
+#dataStorWindow .ds-summary-item{display:flex;flex-direction:column;gap:6px;padding:15px 17px;border-radius:15px;background:linear-gradient(140deg,#fff,#f6faff);border:1px solid #e2ecf7}
+#dataStorWindow .ds-summary-item span{font-size:12px;color:#70829a}
+#dataStorWindow .ds-summary-item strong{font-size:19px;color:#17385f}
+#dataStorWindow .ds-section-title{display:flex;gap:12px;align-items:center;margin-bottom:18px}
+#dataStorWindow .ds-section-title h3,#dataStorWindow .ds-results-title h3{margin:0;font-size:17px;color:#183454}
+#dataStorWindow .ds-section-title p{margin:3px 0 0;font-size:12px;color:#8190a5}
+#dataStorWindow .ds-search-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:#eaf4ff;color:#1675cb;font-size:27px}
+#dataStorWindow .ds-form{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important}
+#dataStorWindow .ds-form label{font-weight:700!important;color:#405775!important;font-size:13px!important}
+#dataStorWindow .ds-form input,#dataStorWindow .ds-form select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #d9e4f0!important;background:#fbfdff!important;border-radius:11px!important;min-height:47px;padding:11px 13px!important;color:#183454!important;font-size:15px!important;outline:none}
+#dataStorWindow .ds-form input:focus,#dataStorWindow .ds-form select:focus{border-color:#4c9ce8!important;box-shadow:0 0 0 3px #238be51a}
+#dataStorWindow .ds-form-actions{grid-column:1/-1;display:flex;gap:9px;flex-wrap:wrap}
+#dataStorWindow .ds-primary,#dataStorWindow .ds-muted{border:0!important;border-radius:10px!important;padding:11px 18px!important;font-size:14px!important;font-weight:750!important;cursor:pointer}
+#dataStorWindow .ds-primary{background:linear-gradient(135deg,#1176d5,#2797ee)!important;color:#fff!important;box-shadow:0 5px 12px #167bd329}
+#dataStorWindow .ds-muted{background:#edf2f8!important;color:#405775!important}
+#dataStorWindow button:disabled{opacity:.55;cursor:not-allowed}
+#dataStorWindow .ds-status{color:#71839a;font-size:13px;margin-top:12px}
+#dataStorWindow .ds-results-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+#dataStorWindow .ds-results-title span{font-size:12px;color:#8694a8}
+#dataStorWindow .ds-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#dataStorWindow .ds-result{border:1px solid #e2eaf3;border-radius:14px;background:#fff;padding:15px;min-width:0}
+#dataStorWindow .ds-result-top{display:flex;align-items:flex-start;gap:11px}
+#dataStorWindow .ds-avatar{width:40px;height:40px;flex:0 0 40px;display:grid;place-items:center;border-radius:12px;background:#e8f3ff;color:#1675cb;font-weight:800}
+#dataStorWindow .ds-result-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+#dataStorWindow .ds-result-info strong{font-size:15px;color:#1b3657;overflow-wrap:anywhere}
+#dataStorWindow .ds-result-info>span{font-size:13px;color:#526983;overflow-wrap:anywhere}
+#dataStorWindow .ds-result-info small{font-size:11px;color:#8492a6;overflow-wrap:anywhere}
+#dataStorWindow .ds-record-tag{font-size:10px;white-space:nowrap;padding:5px 7px;border-radius:20px;background:#eef5fc;color:#58718d}
+#dataStorWindow .ds-result-bottom{margin-top:13px;padding-top:11px;border-top:1px solid #edf1f6;display:flex;align-items:center;justify-content:space-between;gap:8px}
+#dataStorWindow .ds-record-price{font-size:13px;font-weight:800;color:#1e6fb2}
+#dataStorWindow .ds-pagination{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:18px}
+#dataStorWindow .ds-pagination .ds-status{margin:0}
+#dataStorWindow .ds-detail-panel[hidden],#dataStorWindow section[hidden]{display:none!important}
+#dataStorWindow .ds-detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}
+#dataStorWindow .ds-owned{font-size:12px;font-weight:800;color:#148451;background:#e8f8ef;padding:8px 11px;border-radius:22px}
+#dataStorWindow .ds-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#dataStorWindow .ds-detail-field{display:flex;flex-direction:column;gap:6px;padding:13px;border:1px solid #e4edf5;border-radius:11px;background:#fbfdff;min-width:0}
+#dataStorWindow .ds-detail-field span{font-size:12px;color:#8090a4}
+#dataStorWindow .ds-detail-field strong{font-size:15px;color:#1d3859;overflow-wrap:anywhere}
+#dataStorWindow .ds-detail-actions{margin-top:17px}
+@media(max-width:650px){
+ #dataStorWindow .ds-head{flex-direction:column}
+ #dataStorWindow .ds-head>button{align-self:flex-end}
+ #dataStorWindow .ds-summary{grid-template-columns:1fr;gap:8px}
+ #dataStorWindow .ds-summary-item{padding:11px 14px;flex-direction:row;align-items:center;justify-content:space-between}
+ #dataStorWindow .ds-summary-item strong{font-size:16px}
+ #dataStorWindow .ds-form,#dataStorWindow .ds-results,#dataStorWindow .ds-detail-grid{grid-template-columns:1fr!important}
+ #dataStorWindow .ds-form-actions{grid-column:1}
+ #dataStorWindow .ds-result-bottom{align-items:center}
+ #dataStorWindow .ds-detail-head{align-items:flex-start;flex-direction:column}
+}
 body.service-data-stor #appShell>*{display:none!important}
 #dataStorWindow,#digitalDokaanWindow{position:fixed;inset:0;z-index:99999;overflow:auto;background:linear-gradient(145deg,#edf7ff,#f9fbff 60%,#e7f8f2);padding:22px;box-sizing:border-box;color:#102747}
 #dataStorWindow,#digitalDokaanWindow .ds-wrap{max-width:1000px;margin:0 auto}#dataStorWindow,#digitalDokaanWindow .ds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
@@ -1002,25 +1063,57 @@ function showDataStorUnlockConfirm(){
 
 function renderDataStorWindow(){
  document.body.classList.add('service-data-stor');
- let root=document.getElementById('dataStorWindow');if(!root){root=document.createElement('div');root.id='dataStorWindow';document.body.appendChild(root);}
- root.innerHTML='<div class="ds-wrap"><div class="ds-head"><div><h2 style="margin:0 0 5px">🔎 Data Stor Search</h2><div style="color:#5d718c">BRN আংশিক দেখানো হবে। আনলক করলে সম্পূর্ণ রেকর্ড দেখা যাবে।</div></div><button class="ds-muted" onclick="window.close()">✕ বন্ধ করুন</button></div><div class="ds-card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><strong>বর্তমান ব্যালেন্স: <span id="dsBalance">লোড হচ্ছে…</span></strong><span id="dsTotal" style="color:#5d718c"></span></div><form id="dsSearchForm" class="ds-form" style="margin-top:15px"><div><label for="dsDob">জন্মতারিখ</label><input id="dsDob" placeholder="YYYY-MM-DD বা DD/MM/YYYY"></div><div><label for="dsGender">Gender</label><select id="dsGender"><option value="all">সব</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div><div><label for="dsBn">বাংলা নাম</label><input id="dsBn" placeholder="বাংলা নাম"></div><div><label for="dsEn">English Name</label><input id="dsEn" placeholder="English name"></div><div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap"><button class="ds-primary" type="submit">🔍 Search</button><button class="ds-muted" type="button" id="dsClear">Clear</button></div></form><div id="dsMessage" class="ds-status">অনুসন্ধানের জন্য জন্মতারিখ অথবা নাম লিখুন।</div></div><div class="ds-card"><div id="dsResults"></div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px"><button id="dsPrev" class="ds-muted" type="button">← আগের</button><span id="dsPage" class="ds-status"></span><button id="dsNext" class="ds-muted" type="button">পরের →</button></div></div></div>';
- let page=1,lastQuery={},datasetTotal=null;
- const msg=s=>{const e=document.getElementById('dsMessage');if(e)e.textContent=s;};
+ let root=document.getElementById('dataStorWindow');
+ if(!root){root=document.createElement('div');root.id='dataStorWindow';document.body.appendChild(root);}
+ root.innerHTML='<div class="ds-wrap dd-style"><div class="ds-head"><div><div class="ds-kicker">DIGITAL DOKAAN · DATA STORE</div><h2 style="margin:4px 0 5px">নিবন্ধন তথ্য খুঁজুন</h2><div class="ds-subtitle">জন্মতারিখ বা নাম দিয়ে রেকর্ড খুঁজে কিনুন এবং বিস্তারিত দেখুন।</div></div><button class="ds-muted" onclick="window.close()">✕ বন্ধ করুন</button></div><div class="ds-summary"><div class="ds-summary-item"><span>বর্তমান ব্যালেন্স</span><strong id="dsBalance">লোড হচ্ছে…</strong></div><div class="ds-summary-item"><span>মোট রেকর্ড</span><strong id="dsTotal">—</strong></div><div class="ds-summary-item"><span>প্রতি নতুন রেকর্ড</span><strong id="dsRate">লোড হচ্ছে…</strong></div></div><section id="dsSearchPanel" class="ds-card"><div class="ds-section-title"><span class="ds-search-icon">⌕</span><div><h3>রেকর্ড অনুসন্ধান</h3><p>কমপক্ষে একটি তথ্য দিয়ে সার্চ করুন</p></div></div><form id="dsSearchForm" class="ds-form"><div><label for="dsDob">জন্মতারিখ</label><input id="dsDob" placeholder="YYYY-MM-DD বা DD/MM/YYYY"></div><div><label for="dsGender">Gender</label><select id="dsGender"><option value="all">সব</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div><div><label for="dsBn">বাংলা নাম</label><input id="dsBn" placeholder="বাংলা নাম লিখুন"></div><div><label for="dsEn">English Name</label><input id="dsEn" placeholder="English name"></div><div class="ds-form-actions"><button class="ds-primary" type="submit">🔍 Search</button><button class="ds-muted" type="button" id="dsClear">Clear</button></div></form><div id="dsMessage" class="ds-status">অনুসন্ধানের জন্য জন্মতারিখ অথবা নাম লিখুন।</div></section><section id="dsListPanel" class="ds-card"><div class="ds-results-title"><h3>অনুসন্ধানের ফলাফল</h3><span>প্রতি পৃষ্ঠায় ৩০টি</span></div><div id="dsResults" class="ds-results"></div><div class="ds-pagination"><button id="dsPrev" class="ds-muted" type="button">← আগের</button><span id="dsPage" class="ds-status"></span><button id="dsNext" class="ds-muted" type="button">পরের →</button></div></section><section id="dsDetailPanel" class="ds-card ds-detail-panel" hidden><div class="ds-detail-head"><button id="dsBack" class="ds-muted" type="button">← ফলাফলে ফিরুন</button><span class="ds-owned">✓ রেকর্ড কেনা হয়েছে</span></div><div class="ds-section-title"><span class="ds-search-icon">▤</span><div><h3>রেকর্ডের বিস্তারিত তথ্য</h3><p>কেনা রেকর্ডের সম্পূর্ণ তথ্য</p></div></div><div id="dsDetailContent" class="ds-detail-grid"></div><div class="ds-detail-actions"><button id="dsCopyDetail" class="ds-primary" type="button">📋 তথ্য কপি করুন</button></div></section></div>';
+ let page=1,lastQuery={},datasetTotal=null,currentPrice=40,currentFullText='';
+ const $=id=>document.getElementById(id);
+ const msg=s=>{if($('dsMessage'))$('dsMessage').textContent=s;};
  const request=async(url,options={})=>{const r=await fetch(url,options);const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request failed');return d;};
- const updateBalance=n=>{document.getElementById('dsBalance').textContent='৳'+Number(n||0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2});};
+ const money=n=>'৳'+Number(n||0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const updateBalance=n=>{if($('dsBalance'))$('dsBalance').textContent=money(n);};
+ function showDetail(record){
+  const labels=[['brn','BRN'],['dob','জন্মতারিখ'],['bn','বাংলা নাম'],['en','English Name'],['gender','Gender']];
+  const values={brn:record.brn||'',dob:record.dob||'',bn:record.bn||record.name_bn||'',en:record.en||record.name_en||'',gender:record.gender||''};
+  currentFullText=labels.map(([k,l])=>l+': '+values[k]).join('\n');
+  $('dsDetailContent').innerHTML=labels.map(([k,l])=>'<div class="ds-detail-field"><span>'+escHtml(l)+'</span><strong>'+escHtml(values[k]||'—')+'</strong></div>').join('');
+  $('dsListPanel').hidden=true;$('dsSearchPanel').hidden=true;$('dsDetailPanel').hidden=false;
+  $('dsDetailPanel').scrollIntoView({behavior:'smooth',block:'start'});
+ }
+ function showList(){ $('dsDetailPanel').hidden=true;$('dsSearchPanel').hidden=false;$('dsListPanel').hidden=false; }
+ function renderResults(results){
+  $('dsResults').innerHTML=results.map(r=>'<article class="ds-result" data-record-id="'+r.id+'"><div class="ds-result-top"><div class="ds-avatar">ন</div><div class="ds-result-info"><strong>'+escHtml(r.bn||'নাম নেই')+'</strong><span>'+escHtml(r.en||'')+'</span><small>DOB: '+escHtml(r.dob)+' · Gender: '+escHtml(r.gender||'')+'</small><small>BRN: <b>'+escHtml(r.maskedBrn)+'</b></small></div><span class="ds-record-tag">'+(r.unlocked?'কেনা হয়েছে':'নতুন রেকর্ড')+'</span></div><div class="ds-result-bottom"><span class="ds-record-price">'+(r.unlocked?'আপনার রেকর্ড': 'মূল্য: '+money(currentPrice))+'</span><button class="'+(r.unlocked?'ds-muted':'ds-primary')+'" type="button" onclick="dataStorUnlock('+r.id+','+r.unlocked+')">'+(r.unlocked?'বিস্তারিত দেখুন':'Buy Now')+'</button></div></article>').join('');
+ }
  async function search(){
-  const params=new URLSearchParams({...lastQuery,page:String(page),limit:'30'});msg('অনুসন্ধান চলছে…');document.getElementById('dsResults').innerHTML='';
-  try{const d=await request('/api/data-stor/search?'+params.toString());updateBalance(d.balance);document.getElementById('dsTotal').textContent='মোট রেকর্ড: '+d.total;document.getElementById('dsPage').textContent='পৃষ্ঠা '+d.page+' / '+Math.max(1,d.pages);document.getElementById('dsPrev').disabled=d.page<=1;document.getElementById('dsNext').disabled=d.page>=d.pages;
-   if(!d.results.length){msg(datasetTotal===0?'ডাটাবেসে ০টি রেকর্ড আছে। Data Stor-এর পুরোনো রেকর্ড CSV হিসেবে Import করতে হবে।':'এই তথ্যের সঙ্গে মিলে এমন কোনো রেকর্ড পাওয়া যায়নি।');return;}msg(d.total+'টি রেকর্ড পাওয়া গেছে।');
-   document.getElementById('dsResults').innerHTML=d.results.map(r=>'<div class="ds-result" data-record-id="'+r.id+'"><div class="ds-result-head"><div><strong>'+escHtml(r.bn||'নাম নেই')+'</strong><div>'+escHtml(r.en||'')+'</div><div style="color:#5d718c;font-size:13px">DOB: '+escHtml(r.dob)+' · Gender: '+escHtml(r.gender||'')+'</div><div>BRN: <strong>'+escHtml(r.maskedBrn)+'</strong></div></div><button class="'+(r.unlocked?'ds-muted':'ds-primary')+'" type="button" onclick="dataStorUnlock('+r.id+','+r.unlocked+')">'+(r.unlocked?'দেখুন / কপি':'🔓 আনলক ৳৩০')+'</button></div></div>').join('');
+  showList();const params=new URLSearchParams({...lastQuery,page:String(page),limit:'30'});msg('অনুসন্ধান চলছে…');$('dsResults').innerHTML='';
+  try{const d=await request('/api/data-stor/search?'+params.toString());updateBalance(d.balance);currentPrice=Number(d.price)||currentPrice;$('dsRate').textContent=money(currentPrice);$('dsTotal').textContent=Number(d.total||0).toLocaleString('en-BD')+'টি';$('dsPage').textContent='পৃষ্ঠা '+d.page+' / '+Math.max(1,d.pages);$('dsPrev').disabled=d.page<=1;$('dsNext').disabled=d.page>=d.pages;
+   if(!d.results.length){msg(datasetTotal===0?'ডাটাবেসে কোনো রেকর্ড Import করা নেই।':'এই তথ্যের সঙ্গে মিলে এমন কোনো রেকর্ড পাওয়া যায়নি।');return;}
+   msg(d.total+'টি রেকর্ড পাওয়া গেছে।');renderResults(d.results);
   }catch(e){msg(e.message||'Search ব্যর্থ হয়েছে।');}
  }
- window.dataStorUnlock=async(id,already)=>{const btn=document.querySelector('.ds-result[data-record-id="'+id+'"] button');if(btn)btn.disabled=true;try{if(!already){const confirmed=await showDataStorUnlockConfirm();if(!confirmed)return;}msg(already?'আনলক করা রেকর্ড লোড হচ্ছে…':'রেকর্ড আনলক হচ্ছে…');const d=already?await request('/api/data-stor/records/'+id):await request('/api/data-stor/records/'+id+'/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});const r=d.record||{};if(d.balance!==undefined)updateBalance(d.balance);const full='BRN: '+(r.brn||'')+'\nDOB: '+(r.dob||'')+'\nবাংলা নাম: '+(r.bn||r.name_bn||'')+'\nEnglish Name: '+(r.en||r.name_en||'')+'\nGender: '+(r.gender||'');await search();const card=document.querySelector('.ds-result[data-record-id="'+id+'"]');if(card){let detail=card.querySelector('.ds-full-record');if(!detail){detail=document.createElement('div');detail.className='ds-full-record';detail.style.cssText='margin-top:12px;padding:12px;border:1px solid #b8e2c5;border-radius:10px;background:#f0fbf3;';card.appendChild(detail);}detail.innerHTML='<div style="font-weight:800;color:#176b35;margin-bottom:8px">✓ রেকর্ড আনলক হয়েছে</div><pre style="white-space:pre-wrap;word-break:break-word;font:inherit;margin:0 0 10px">'+escHtml(full)+'</pre><button type="button" class="ds-primary" data-copy-record="'+id+'">📋 কপি করুন</button>';detail.querySelector('[data-copy-record]').addEventListener('click',async()=>{try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(full);}else{const ta=document.createElement('textarea');ta.value=full;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();if(!ok)throw Error('কপি করা যায়নি। রেকর্ডটি চেপে ধরে কপি করুন।');}msg('রেকর্ড কপি হয়েছে।');}catch(copyError){msg(copyError.message||'কপি করা যায়নি। রেকর্ডটি চেপে ধরে কপি করুন।');}});}msg('রেকর্ড আনলক হয়েছে। নিচে সম্পূর্ণ তথ্য ও কপি বাটন দেখুন।');}catch(e){msg(e.message||'Unlock ব্যর্থ হয়েছে।');}finally{const b=document.querySelector('.ds-result[data-record-id="'+id+'"] button');if(b)b.disabled=false;}};
- document.getElementById('dsSearchForm').addEventListener('submit',e=>{e.preventDefault();page=1;lastQuery={dob:document.getElementById('dsDob').value.trim(),bn:document.getElementById('dsBn').value.trim(),en:document.getElementById('dsEn').value.trim(),gender:document.getElementById('dsGender').value};Object.keys(lastQuery).forEach(k=>{if(!lastQuery[k]||lastQuery[k]==='all')delete lastQuery[k];});search();});
- document.getElementById('dsClear').addEventListener('click',()=>{document.getElementById('dsSearchForm').reset();lastQuery={};page=1;document.getElementById('dsResults').innerHTML='';document.getElementById('dsTotal').textContent='';msg('অনুসন্ধানের জন্য জন্মতারিখ অথবা নাম লিখুন।');});
- document.getElementById('dsPrev').addEventListener('click',()=>{if(page>1){page--;search();}});document.getElementById('dsNext').addEventListener('click',()=>{page++;search();});
- request('/api/data-stor/stats').then(d=>{updateBalance(d.balance);const total=Number(d.total)||0;datasetTotal=total;document.getElementById('dsTotal').textContent='মোট রেকর্ড: '+total;if(total===0)msg('ডাটাবেসে কোনো রেকর্ড Import করা নেই। Source Data Stor-এর CSV রেকর্ড AutoFill database-এ Import না হওয়া পর্যন্ত Search ফলাফল আসবে না।');}).catch(e=>msg('Data Stor database/stats লোড হয়নি: '+e.message));
+ window.dataStorUnlock=async(id,already)=>{
+  const btn=document.querySelector('.ds-result[data-record-id="'+id+'"] button');if(btn)btn.disabled=true;
+  try{
+   if(!already){const confirmed=await showDataStorUnlockConfirm(currentPrice);if(!confirmed)return;}
+   msg(already?'কেনা রেকর্ড লোড হচ্ছে…':'রেকর্ড কেনা হচ্ছে…');
+   const d=already?await request('/api/data-stor/records/'+id):await request('/api/data-stor/records/'+id+'/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+   if(d.balance!==undefined)updateBalance(d.balance);
+   if(d.charged>0)msg(money(d.charged)+' কেটে রেকর্ড কেনা হয়েছে।');
+   showDetail(d.record||{});
+   $('dsDetailPanel').scrollIntoView({behavior:'smooth',block:'start'});
+   search().catch(()=>{});
+   showDetail(d.record||{});
+  }catch(e){msg(e.message||'রেকর্ড কেনা যায়নি।');}
+  finally{const b=document.querySelector('.ds-result[data-record-id="'+id+'"] button');if(b)b.disabled=false;}
+ };
+ $('dsSearchForm').addEventListener('submit',e=>{e.preventDefault();page=1;lastQuery={dob:$('dsDob').value.trim(),bn:$('dsBn').value.trim(),en:$('dsEn').value.trim(),gender:$('dsGender').value};Object.keys(lastQuery).forEach(k=>{if(!lastQuery[k]||lastQuery[k]==='all')delete lastQuery[k];});search();});
+ $('dsClear').addEventListener('click',()=>{$('dsSearchForm').reset();lastQuery={};page=1;$('dsResults').innerHTML='';$('dsTotal').textContent='—';showList();msg('অনুসন্ধানের জন্য জন্মতারিখ অথবা নাম লিখুন।');});
+ $('dsPrev').addEventListener('click',()=>{if(page>1){page--;search();}});$('dsNext').addEventListener('click',()=>{page++;search();});
+ $('dsBack').addEventListener('click',()=>showList());
+ $('dsCopyDetail').addEventListener('click',async()=>{try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(currentFullText);else{const ta=document.createElement('textarea');ta.value=currentFullText;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();if(!ok)throw Error('কপি করা যায়নি।');}msg('রেকর্ড কপি হয়েছে।');}catch(e){msg(e.message||'কপি করা যায়নি।');}});
+ Promise.all([request('/api/data-stor/stats'),request('/api/admin/digitaldokaan-price').catch(()=>null)]).then(([d,rate])=>{updateBalance(d.balance);datasetTotal=Number(d.total)||0;$('dsTotal').textContent=datasetTotal.toLocaleString('en-BD')+'টি';currentPrice=Number(rate?.price)||40;$('dsRate').textContent=money(currentPrice);if(datasetTotal===0)msg('ডাটাবেসে কোনো রেকর্ড Import করা নেই।');}).catch(e=>msg(e.message||'Data Store লোড হয়নি।'));
 }
+
 function escHtml(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 
 
