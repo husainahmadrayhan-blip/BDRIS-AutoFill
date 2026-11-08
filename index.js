@@ -521,7 +521,7 @@ app.post('/api/debug-geo', async (req, res) => {
 });
 
 
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now(),database:pool?(dbReady?'neon-connected':'neon-connecting'):'local-json',pdfImageStorage:{writable:true,persistent:PDF_IMAGE_STORAGE_PERSISTENT}}));
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'BDRIS AutoFill',time:Date.now(),database:pool?(dbReady?'neon-connected':(dbStartupError?'neon-error':'neon-connecting')):'local-json',databaseError:dbStartupError||undefined,pdfImageStorage:{writable:true,persistent:PDF_IMAGE_STORAGE_PERSISTENT}}));
 app.get('/api/runtime/browser',(req,res)=>res.json({ok:true,cacheDir:process.env.PUPPETEER_CACHE_DIR,serviceDir:__dirname,node:process.version}));
 
 // Public lightweight health-check endpoint for uptime monitoring.
@@ -3125,6 +3125,8 @@ const port =
     process.env.PORT || 3000;
 
 
+let dbStartupError = '';
+
 async function startServer(){
   // Start HTTP even when Neon is temporarily unreachable. The app can still
   // serve its UI and local features; DB-backed actions remain unavailable until
@@ -3140,7 +3142,8 @@ async function startServer(){
       }
     }
   } catch (err) {
-    console.error('[Database] Neon connection/schema setup failed; starting in degraded mode:', err.message);
+    dbStartupError = String(err && err.message || err);
+    console.error('[Database] Neon connection/schema setup failed; starting in degraded mode:', dbStartupError);
     console.error('[Database] Check Render Environment -> DATABASE_URL. Use the current Neon pooled connection string, including the correct hostname and sslmode=require.');
   }
 
