@@ -3126,16 +3126,37 @@ const port =
 
 
 async function startServer(){
-  try { await initializeDatabase(); await restorePDFImageLibraryFromNeon(); }
-  catch(err) { console.error('[Database] DATABASE_URL is set but Neon connection/schema setup failed:',err.message); process.exitCode=1; return; }
+  // Start HTTP even when Neon is temporarily unreachable. The app can still
+  // serve its UI and local features; DB-backed actions remain unavailable until
+  // the database is configured/reachable. Do not set process.exitCode here.
+  let databaseAvailable = false;
+  try {
+    await initializeDatabase();
+    databaseAvailable = !pool || dbReady;
+    if (databaseAvailable && pool) {
+      try { await restorePDFImageLibraryFromNeon(); }
+      catch (err) {
+        console.error('[Database] PDF image library restore failed; server will continue:', err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[Database] Neon connection/schema setup failed; starting in degraded mode:', err.message);
+    console.error('[Database] Check Render Environment -> DATABASE_URL. Use the current Neon pooled connection string, including the correct hostname and sslmode=require.');
+  }
+
   app.listen(port,'0.0.0.0',()=>{
-    console.log(''); console.log('==========================================');
-    console.log('🚀 BDRIS SMART AUTO FILL READY'); console.log('==========================================');
+    console.log('');
+    console.log('==========================================');
+    console.log('🚀 BDRIS SMART AUTO FILL READY');
+    console.log('==========================================');
     console.log(`🌐 Local: http://localhost:${port}`);
     console.log(`📱 Same-device: http://127.0.0.1:${port}`);
-    console.log(pool ? '🗄️ Database: Neon PostgreSQL connected' : '🗄️ Database: local JSON fallback (not durable cloud storage)');
-    console.log('ℹ️ If running on a PC, open the PC LAN IP from the phone.'); console.log('');
-    setTimeout(() => { getSharedBrowser().catch(() => {}); },2500);
+    console.log(pool && databaseAvailable
+      ? '🗄️ Database: Neon PostgreSQL connected'
+      : '⚠️ Database: unavailable; local JSON fallback is active (not durable on Render)');
+    console.log('ℹ️ If running on a PC, open the PC LAN IP from the phone.');
+    console.log('');
+    setTimeout(() => { getSharedBrowser().catch(err => console.warn('[Puppeteer] Browser warm-up failed:', err.message)); },2500);
   });
 }
 startServer();
